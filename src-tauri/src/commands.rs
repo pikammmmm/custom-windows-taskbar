@@ -73,3 +73,10 @@ pub fn unpin_app(
     pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
     Ok(PinResult { pinned: guard.clone() })
 }
+
+#[tauri::command]
+pub fn set_hud_position(x: f64, y: f64) -> Result<(), String> {
+    let mut s = config::load_settings().map_err(|e| e.to_string())?;
+    s.hud_position = Some((x, y));
+    config::save_settings(&s).map_err(|e| e.to_string())
+}

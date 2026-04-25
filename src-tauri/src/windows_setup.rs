@@ -23,10 +23,13 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 
     let hud_w = 280.0;
     let hud_h = 220.0;
+    let settings = crate::config::load_settings().unwrap_or_default();
+    let (hud_x, hud_y) = settings.hud_position
+        .unwrap_or((screen_w - hud_w - 12.0, 12.0));
     let hud = WebviewWindowBuilder::new(app, "hud", WebviewUrl::App("hud/index.html".into()))
         .title("glassbar-hud")
         .inner_size(hud_w, hud_h)
-        .position(screen_w - hud_w - 12.0, 12.0)
+        .position(hud_x, hud_y)
         .decorations(false).transparent(true).always_on_top(true)
         .skip_taskbar(true).resizable(false).shadow(false)
         .build()?;

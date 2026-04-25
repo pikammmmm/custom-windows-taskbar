@@ -29,6 +29,7 @@ fn main() {
             commands::get_icon,
             commands::pin_app,
             commands::unpin_app,
+            commands::set_hud_position,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;

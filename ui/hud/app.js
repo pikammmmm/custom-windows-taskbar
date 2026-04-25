@@ -45,3 +45,42 @@ async function init() {
   setInterval(render, 1000);
 }
 init();
+
+const { invoke } = window.__TAURI__.core;
+const { getCurrentWindow, LogicalPosition } = window.__TAURI__.window;
+
+const drag = document.getElementById('drag');
+let dragState = null;
+
+drag.addEventListener('mousedown', async (e) => {
+  if (e.button !== 0) return;
+  const win = getCurrentWindow();
+  const pos = await win.outerPosition();
+  const scale = await win.scaleFactor();
+  dragState = {
+    startX: e.screenX,
+    startY: e.screenY,
+    winX: pos.x / scale,
+    winY: pos.y / scale,
+  };
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', async (e) => {
+  if (!dragState) return;
+  const win = getCurrentWindow();
+  const dx = e.screenX - dragState.startX;
+  const dy = e.screenY - dragState.startY;
+  const newX = dragState.winX + dx;
+  const newY = dragState.winY + dy;
+  await win.setPosition(new LogicalPosition(newX, newY));
+});
+
+window.addEventListener('mouseup', async () => {
+  if (!dragState) return;
+  const win = getCurrentWindow();
+  const pos = await win.outerPosition();
+  const scale = await win.scaleFactor();
+  await invoke('set_hud_position', { x: pos.x / scale, y: pos.y / scale });
+  dragState = null;
+});
