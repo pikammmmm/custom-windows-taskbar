@@ -11,6 +11,7 @@ mod app_tracker;
 mod icons;
 mod commands;
 mod widgets;
+mod widget_state;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -45,6 +46,7 @@ fn main() {
             app.manage(pinned_state);
             windows_setup::create_windows(app)?;
             app_tracker::spawn_poller(app.handle().clone(), std::time::Duration::from_millis(500));
+            widget_state::spawn(app.handle().clone(), std::time::Duration::from_secs(1));
             Ok(())
         })
         .run(tauri::generate_context!())
