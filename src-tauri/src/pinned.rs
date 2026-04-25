@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use anyhow::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -28,10 +30,39 @@ pub fn save_to(path: &Path, apps: &[PinnedApp]) -> Result<()> {
     Ok(())
 }
 
+pub type PinnedHandle = Arc<Mutex<Vec<PinnedApp>>>;
+
+pub fn watch(
+    path: PathBuf,
+    on_change: impl Fn(Vec<PinnedApp>) + Send + 'static,
+) -> Result<notify::RecommendedWatcher> {
+    use notify::{EventKind, RecursiveMode, Watcher};
+
+    let path_for_callback = path.clone();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(event) = res else { return };
+        if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+            return;
+        }
+        // Debounce: editors often write in two passes (truncate + write).
+        std::thread::sleep(Duration::from_millis(150));
+        match load_from(&path_for_callback) {
+            Ok(apps) => on_change(apps),
+            Err(e) => tracing::warn!("pinned reload failed: {e}"),
+        }
+    })?;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("pinned path has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    watcher.watch(parent, RecursiveMode::NonRecursive)?;
+    Ok(watcher)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn tmp() -> (TempDir, PathBuf) {
