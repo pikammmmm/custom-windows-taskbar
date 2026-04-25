@@ -1,0 +1,73 @@
+.dock-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.dock-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+  pointer-events: auto;
+}
+.dock-icon:hover {
+  background: rgba(255,255,255,0.10);
+  transform: translateY(-2px);
+}
+.dock-icon img {
+  width: 32px;
+  height: 32px;
+  -webkit-user-drag: none;
+}
+.dock-icon .dot {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #4af;
+  box-shadow: 0 0 6px #4af;
+}
+.dock-icon .dot.multi {
+  width: 14px;
+  border-radius: 2px;
+}
+
+.dock-divider {
+  width: 1px;
+  height: 36px;
+  background: rgba(255,255,255,0.15);
+  margin: 0 4px;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20,20,25,0.95);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.dock-icon:hover .tooltip {
+  opacity: 1;
+}
