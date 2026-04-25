@@ -12,6 +12,7 @@ mod icons;
 mod commands;
 mod widgets;
 mod widget_state;
+mod autostart;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -30,11 +31,20 @@ fn main() {
             commands::pin_app,
             commands::unpin_app,
             commands::set_hud_position,
+            commands::set_autostart,
+            commands::get_autostart,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
             let initial = pinned::load_from(&pinned_path).unwrap_or_default();
             let pinned_state: pinned::PinnedHandle = Arc::new(Mutex::new(initial));
+
+            let settings = config::load_settings().unwrap_or_default();
+            if settings.auto_start && !autostart::is_enabled() {
+                let _ = autostart::enable();
+            } else if !settings.auto_start && autostart::is_enabled() {
+                let _ = autostart::disable();
+            }
 
             let pinned_clone = pinned_state.clone();
             let app_handle = app.handle().clone();

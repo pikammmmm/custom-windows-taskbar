@@ -1,4 +1,4 @@
-use crate::{win32, pinned, icons, config};
+use crate::{win32, pinned, icons, config, autostart};
 use std::process::Command;
 use serde::Serialize;
 use tauri::State;
@@ -79,4 +79,21 @@ pub fn set_hud_position(x: f64, y: f64) -> Result<(), String> {
     let mut s = config::load_settings().map_err(|e| e.to_string())?;
     s.hud_position = Some((x, y));
     config::save_settings(&s).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_autostart(enable: bool) -> Result<(), String> {
+    let mut s = config::load_settings().map_err(|e| e.to_string())?;
+    s.auto_start = enable;
+    config::save_settings(&s).map_err(|e| e.to_string())?;
+    if enable {
+        autostart::enable().map_err(|e| e.to_string())
+    } else {
+        autostart::disable().map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_autostart() -> bool {
+    autostart::is_enabled()
 }
