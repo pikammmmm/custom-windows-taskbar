@@ -30,6 +30,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+sysinfo = { version = "0.32", default-features = false, features = ["network"] }
 
 [dev-dependencies]
 tempfile = "3"
