@@ -71,3 +71,30 @@
 .dock-icon:hover .tooltip {
   opacity: 1;
 }
+
+.menu {
+  position: fixed;
+  background: rgba(20,20,25,0.97);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 180px;
+  z-index: 1000;
+  pointer-events: auto;
+}
+.menu-item {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.menu-item:hover { background: rgba(255,255,255,0.10); }
+.menu-sep {
+  height: 1px;
+  background: rgba(255,255,255,0.10);
+  margin: 4px 6px;
+}
+.menu-item.danger { color: #f88; }
