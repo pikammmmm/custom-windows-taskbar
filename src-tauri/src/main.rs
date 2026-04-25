@@ -10,6 +10,7 @@ mod win32;
 mod app_tracker;
 mod icons;
 mod commands;
+mod widgets;
 
 fn main() {
     tracing_subscriber::fmt()
