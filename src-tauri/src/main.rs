@@ -6,6 +6,7 @@ use tauri::{Manager, Emitter};
 mod windows_setup;
 mod pinned;
 mod config;
+mod win32;
 
 fn main() {
     tracing_subscriber::fmt()
