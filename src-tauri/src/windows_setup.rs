@@ -36,8 +36,9 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 }
 
 fn apply_blur(window: &tauri::WebviewWindow) {
-    if apply_mica(window, Some(true)).is_ok() {
-        return;
+    if let Err(mica_err) = apply_mica(window, Some(true)) {
+        if let Err(acrylic_err) = apply_acrylic(window, Some((20, 20, 25, 160))) {
+            tracing::warn!(?mica_err, ?acrylic_err, "blur unavailable on this OS");
+        }
     }
-    let _ = apply_acrylic(window, Some((20, 20, 25, 160)));
 }
