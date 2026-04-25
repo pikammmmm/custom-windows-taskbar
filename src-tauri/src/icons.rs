@@ -5,7 +5,7 @@ use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_L
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO, HICON};
 use windows::Win32::Graphics::Gdi::{
     GetDIBits, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, BI_RGB,
-    GetDC, ReleaseDC, GetObjectW, BITMAP,
+    GetDC, ReleaseDC, GetObjectW, BITMAP, DeleteObject,
 };
 use windows::core::PCWSTR;
 use crate::config;
@@ -50,9 +50,9 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
     if result == 0 || info.hIcon.0 == std::ptr::null_mut() {
         return Err(anyhow!("SHGetFileInfoW returned no icon for {exe_path}"));
     }
-    let png = hicon_to_png(info.hIcon)?;
+    let png = hicon_to_png(info.hIcon);
     unsafe { let _ = DestroyIcon(info.hIcon); }
-    Ok(png)
+    png
 }
 
 fn hicon_to_png(hicon: HICON) -> Result<Vec<u8>> {
@@ -61,11 +61,21 @@ fn hicon_to_png(hicon: HICON) -> Result<Vec<u8>> {
         GetIconInfo(hicon, &mut icon_info)?;
 
         let mut bm = BITMAP::default();
-        GetObjectW(icon_info.hbmColor, std::mem::size_of::<BITMAP>() as i32, Some(&mut bm as *mut _ as *mut _));
+        let obj_size = GetObjectW(icon_info.hbmColor, std::mem::size_of::<BITMAP>() as i32, Some(&mut bm as *mut _ as *mut _));
+        if obj_size == 0 || bm.bmWidth <= 0 || bm.bmHeight <= 0 {
+            if !icon_info.hbmColor.is_invalid() { let _ = DeleteObject(icon_info.hbmColor); }
+            if !icon_info.hbmMask.is_invalid()  { let _ = DeleteObject(icon_info.hbmMask);  }
+            return Err(anyhow!("GetObjectW failed or icon has zero dimensions"));
+        }
         let w = bm.bmWidth as u32;
         let h = bm.bmHeight as u32;
 
         let hdc = GetDC(None);
+        if hdc.is_invalid() {
+            if !icon_info.hbmColor.is_invalid() { let _ = DeleteObject(icon_info.hbmColor); }
+            if !icon_info.hbmMask.is_invalid()  { let _ = DeleteObject(icon_info.hbmMask);  }
+            return Err(anyhow!("GetDC returned null"));
+        }
         let mut bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
@@ -79,8 +89,16 @@ fn hicon_to_png(hicon: HICON) -> Result<Vec<u8>> {
             ..Default::default()
         };
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        GetDIBits(hdc, icon_info.hbmColor, 0, h, Some(buf.as_mut_ptr() as *mut _), &mut bmi, DIB_RGB_COLORS);
+        let scanlines = GetDIBits(hdc, icon_info.hbmColor, 0, h, Some(buf.as_mut_ptr() as *mut _), &mut bmi, DIB_RGB_COLORS);
         ReleaseDC(None, hdc);
+
+        // Now safe to clean up the bitmaps.
+        if !icon_info.hbmColor.is_invalid() { let _ = DeleteObject(icon_info.hbmColor); }
+        if !icon_info.hbmMask.is_invalid()  { let _ = DeleteObject(icon_info.hbmMask);  }
+
+        if scanlines == 0 {
+            return Err(anyhow!("GetDIBits failed (no scanlines copied)"));
+        }
 
         // BGRA -> RGBA
         for px in buf.chunks_exact_mut(4) {
