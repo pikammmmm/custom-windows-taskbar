@@ -1,4 +1,30 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>hud</title>
-<link rel="stylesheet" href="../shared/glass.css"></head>
-<body><div class="glass-card" id="root">hud placeholder</div></body></html>
+<link rel="stylesheet" href="../shared/glass.css">
+<link rel="stylesheet" href="style.css"></head>
+<body>
+  <div class="glass-card hud" id="hud">
+    <div class="row clock-row">
+      <div class="time" id="time">--:--</div>
+      <div class="date" id="date">--</div>
+    </div>
+    <div class="sep"></div>
+    <div class="row net-row">
+      <div class="net-line">
+        <span class="arrow down">↓</span>
+        <span class="rate" id="down">0 KB/s</span>
+      </div>
+      <div class="net-line">
+        <span class="arrow up">↑</span>
+        <span class="rate" id="up">0 KB/s</span>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="row media-row" id="media-row">
+      <div class="title" id="media-title">Nothing playing</div>
+      <div class="artist" id="media-artist"></div>
+    </div>
+    <div class="drag-handle" id="drag"></div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body></html>

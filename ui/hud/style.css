@@ -1,0 +1,65 @@
+.hud {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  gap: 10px;
+  position: relative;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sep {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 2px -4px;
+}
+
+.clock-row .time {
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.clock-row .date {
+  font-size: 12px;
+  color: var(--glass-fg-dim);
+  margin-top: 2px;
+}
+
+.net-row { gap: 4px; }
+.net-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.arrow { color: #7ad; font-weight: bold; }
+.arrow.up { color: #fa7; }
+
+.media-row .title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-row .artist {
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drag-handle {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 8px;
+  cursor: grab;
+}
