@@ -9,6 +9,7 @@ mod config;
 mod win32;
 mod app_tracker;
 mod icons;
+mod commands;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -16,6 +17,17 @@ fn main() {
         .init();
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            commands::launch,
+            commands::focus_window,
+            commands::minimize_window,
+            commands::close_window,
+            commands::foreground_hwnd,
+            commands::get_pinned,
+            commands::get_icon,
+            commands::pin_app,
+            commands::unpin_app,
+        ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
             let initial = pinned::load_from(&pinned_path).unwrap_or_default();
