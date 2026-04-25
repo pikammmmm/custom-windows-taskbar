@@ -7,6 +7,7 @@ mod windows_setup;
 mod pinned;
 mod config;
 mod win32;
+mod app_tracker;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -29,6 +30,7 @@ fn main() {
 
             app.manage(pinned_state);
             windows_setup::create_windows(app)?;
+            app_tracker::spawn_poller(app.handle().clone(), std::time::Duration::from_millis(500));
             Ok(())
         })
         .run(tauri::generate_context!())
