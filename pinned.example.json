@@ -1,0 +1,10 @@
+[
+  {
+    "path": "C:\\Windows\\System32\\notepad.exe",
+    "display_name": "Notepad"
+  },
+  {
+    "path": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+    "display_name": "Firefox"
+  }
+]
