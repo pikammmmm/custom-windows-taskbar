@@ -8,6 +8,7 @@ mod pinned;
 mod config;
 mod win32;
 mod app_tracker;
+mod icons;
 
 fn main() {
     tracing_subscriber::fmt()
