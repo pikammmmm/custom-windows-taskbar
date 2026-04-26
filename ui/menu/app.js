@@ -3,51 +3,59 @@ const { listen } = window.__TAURI__.event;
 const { getCurrentWindow } = window.__TAURI__.window;
 
 const itemsRoot = document.getElementById('items');
-const probe = document.getElementById('probe');
-
-function setProbe(s) { if (probe) probe.textContent = s; }
-setProbe('js');
 
 function renderItems(items) {
   const list = Array.isArray(items) ? items : [];
-  if (list.length === 0) {
-    setProbe(`render:0`);
-    return; // keep "no items yet" placeholder so we can see we got here
-  }
+  if (list.length === 0) return;
   itemsRoot.innerHTML = '';
   for (const item of list) {
     itemsRoot.appendChild(renderItem(item));
   }
-  setProbe(`render:${list.length}`);
 }
 
-// Fast path
-listen('menu:items', (e) => {
-  setProbe(`evt:${Array.isArray(e.payload) ? e.payload.length : '?'}`);
-  renderItems(e.payload);
-}).then(() => setProbe('listening'));
+// Fast path: the dock-side `show_menu` emits this just before showing the
+// window. Once the listener is registered (steady state), this is the only
+// path that needs to fire.
+listen('menu:items', (e) => renderItems(e.payload));
 
-// Pull path — also runs on a slow tick so timing/focus quirks can't keep
-// the menu blank forever. Cheap (single IPC call).
+// Reliable path: pull from Rust's stashed last_menu_items. Used both on
+// focus and as a polling safety-net while the menu is visible-but-empty —
+// the listener-registration race on first right-click can otherwise leave
+// the menu blank indefinitely.
+let pollHandle = null;
 async function pullItems() {
   try {
     const items = await invoke('get_menu_items');
-    setProbe(`pull:${Array.isArray(items) ? items.length : '?'}`);
-    if (Array.isArray(items) && items.length > 0) renderItems(items);
-  } catch (e) {
-    setProbe(`err:${String(e).slice(0, 12)}`);
-  }
+    if (Array.isArray(items) && items.length > 0) {
+      renderItems(items);
+      stopPolling();
+    }
+  } catch {}
+}
+function startPolling() {
+  if (pollHandle != null) return;
+  pollHandle = setInterval(pullItems, 200);
+}
+function stopPolling() {
+  if (pollHandle != null) { clearInterval(pollHandle); pollHandle = null; }
 }
 
 const win = getCurrentWindow();
 win.onFocusChanged(({ payload: focused }) => {
-  setProbe(`focus:${focused}`);
-  if (focused) pullItems();
-  else invoke('hide_menu').catch(() => {});
+  if (focused) {
+    // Re-render every show, in case the items array changed since last time.
+    itemsRoot.innerHTML = '';
+    pullItems();
+    startPolling();
+  } else {
+    stopPolling();
+    invoke('hide_menu').catch(() => {});
+  }
 });
 
+// Cold-start nudge: if the focus event doesn't fire on the first show
+// (focus quirks on always-on-top windows), the poll picks it up anyway.
 pullItems();
-setInterval(pullItems, 250); // safety-net poll while diagnosing
 
 function renderItem(item) {
   if (item.kind === 'separator') {
