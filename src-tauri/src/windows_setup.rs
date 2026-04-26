@@ -46,6 +46,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .build()?;
     force_webview_transparent(&dock);
     apply_glass(&dock);
+    apply_noactivate(&dock);
     clip_to_rounded(&dock, 22.0, scale);
 
     let hud_w = 280.0;
@@ -67,6 +68,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .build()?;
     force_webview_transparent(&hud);
     apply_glass(&hud);
+    apply_noactivate(&hud);
     clip_to_rounded(&hud, 22.0, scale);
 
     // Pre-create the right-click context menu window. Hidden until something
@@ -86,6 +88,12 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .build()?;
     force_webview_transparent(&menu);
     apply_glass(&menu);
+    // Intentionally NOT calling apply_noactivate on the menu — a menu must
+    // be able to take focus so its onFocusChanged listener fires (used to
+    // pull items + auto-dismiss on blur) and so Escape keydown reaches it.
+    // The dock/HUD stay no-activate because clicking them shouldn't steal
+    // focus from the user's working window.
+
     // Don't apply rounded region here — show_menu re-sizes the window per use,
     // and SetWindowRgn is one-shot per dimensions. CSS border-radius on the
     // menu card handles visual rounding instead.
@@ -114,8 +122,15 @@ fn apply_glass(window: &tauri::WebviewWindow) {
     // on builds where Tauri's transparent flag doesn't give the window
     // per-pixel-alpha capability.
     dwm::make_layered_with_alpha(h, 160);
-    dwm::make_noactivate(h);
     dwm::strip_decorations(h);
     dwm::suppress_nc_rendering(h);
     dwm::round_corners(h);
+}
+
+/// Add WS_EX_NOACTIVATE so clicking the window doesn't steal focus from the
+/// user's working window. Applied to dock + HUD, NOT to the menu (which
+/// needs focus to handle Escape and auto-dismiss).
+fn apply_noactivate(window: &tauri::WebviewWindow) {
+    let Ok(hwnd) = window.hwnd() else { return; };
+    dwm::make_noactivate(hwnd.0 as isize);
 }
