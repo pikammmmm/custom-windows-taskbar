@@ -1,5 +1,5 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned};
-use crate::widgets::{audio, media};
+use crate::widgets::{audio, media, start_menu};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -101,6 +101,45 @@ pub fn pin_app(
 #[tauri::command]
 pub fn recent_files() -> Result<Vec<import_pinned::RecentFile>, String> {
     import_pinned::recent_files(7).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_apps(query: String) -> Vec<start_menu::AppEntry> {
+    start_menu::search(&query, 12)
+}
+
+#[tauri::command]
+pub fn show_spotlight(app: AppHandle) -> Result<(), String> {
+    let win = app.get_webview_window("spotlight")
+        .ok_or_else(|| "spotlight window missing".to_string())?;
+    let monitor = win.current_monitor().ok().flatten()
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let mon_w = monitor.size().width as i32;
+    let mon_h = monitor.size().height as i32;
+    let scale = monitor.scale_factor();
+    let w = (560.0 * scale).round() as i32;
+    let h = (440.0 * scale).round() as i32;
+    let x = (mon_w - w) / 2;
+    // Position one-third down the screen — feels natural and leaves room
+    // for the result list below the input box.
+    let y = (mon_h as f64 / 3.5) as i32;
+    win.set_size(PhysicalSize::new(w as u32, h as u32))
+        .map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    let _ = win.set_focus();
+    let _ = app.emit_to("spotlight", "spotlight:show", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn hide_spotlight(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("spotlight") {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// Pin a batch of dropped paths (from a window file-drop). Resolves

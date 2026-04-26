@@ -38,6 +38,9 @@ fn main() {
             commands::pin_app,
             commands::pin_dropped,
             commands::recent_files,
+            commands::search_apps,
+            commands::show_spotlight,
+            commands::hide_spotlight,
             commands::unpin_app,
             commands::set_hud_position,
             commands::set_autostart,
@@ -119,6 +122,15 @@ fn main() {
             // Low-level keyboard hook so Win-key tap toggles the dock
             // (chord support preserved — Win+R, Win+E, etc still work).
             keyhook::spawn();
+
+            // Build the spotlight app index off the main thread — walking
+            // both Start Menu trees and resolving every .lnk takes a beat
+            // on a fresh machine but never blocks UI startup.
+            std::thread::spawn(|| {
+                if let Err(e) = widgets::start_menu::build() {
+                    tracing::warn!("start_menu index build failed: {e}");
+                }
+            });
 
             // Re-strip decorations after Tauri's late init has settled — on
             // some Win11 builds the framework re-applies WS_CAPTION between

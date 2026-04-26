@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL,
-    VK_LWIN, VK_RWIN,
+    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SPACE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
@@ -12,6 +12,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 static WIN_DOWN: AtomicBool = AtomicBool::new(false);
 static CHORD_USED: AtomicBool = AtomicBool::new(false);
 static TOGGLE_REQUESTED: AtomicBool = AtomicBool::new(false);
+static SPOTLIGHT_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 const LLKHF_INJECTED: u32 = 0x10;
 
@@ -19,6 +20,11 @@ const LLKHF_INJECTED: u32 = 0x10;
 /// auto-hide loop to consume Win-key tap signals.
 pub fn take_toggle_request() -> bool {
     TOGGLE_REQUESTED.swap(false, Ordering::AcqRel)
+}
+
+/// Returns and clears the pending spotlight request — Ctrl+Alt+Space.
+pub fn take_spotlight_request() -> bool {
+    SPOTLIGHT_REQUESTED.swap(false, Ordering::AcqRel)
 }
 
 /// Spawn a dedicated thread that installs a low-level keyboard hook + runs
@@ -64,6 +70,16 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                 } else if WIN_DOWN.load(Ordering::SeqCst) {
                     // Any non-Win key while Win is held = chord (Win+R, Win+E, etc).
                     CHORD_USED.store(true, Ordering::SeqCst);
+                }
+                // Ctrl+Alt+Space → spotlight. We check both modifier keys via
+                // GetAsyncKeyState so we don't have to track them ourselves.
+                if vk == VK_SPACE.0 as u32 {
+                    let ctrl = (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
+                    let alt  = (GetAsyncKeyState(VK_MENU.0    as i32) as u16 & 0x8000) != 0;
+                    if ctrl && alt {
+                        SPOTLIGHT_REQUESTED.store(true, Ordering::SeqCst);
+                        return LRESULT(1); // suppress so other apps don't see it
+                    }
                 }
             }
             x if x == WM_KEYUP || x == WM_SYSKEYUP => {
