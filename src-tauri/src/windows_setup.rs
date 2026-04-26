@@ -1,6 +1,5 @@
 use tauri::utils::config::Color;
 use tauri::{App, WebviewUrl, WebviewWindowBuilder};
-use window_vibrancy::{apply_acrylic, apply_blur, apply_mica};
 use anyhow::Result;
 
 use crate::dwm;
