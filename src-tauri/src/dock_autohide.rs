@@ -1,5 +1,5 @@
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -93,6 +93,29 @@ fn run(app: AppHandle) {
         } else if visible && !win_pinned && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
             visible = false;
             start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
+        }
+
+        // Ctrl+Alt+Space — show the spotlight launcher.
+        if keyhook::take_spotlight_request() {
+            let _ = app.emit("spotlight:hotkey", ());
+            // Inline call to show_spotlight via the same AppHandle.
+            if let Some(win) = app.get_webview_window("spotlight") {
+                if let Ok(Some(monitor)) = win.current_monitor() {
+                    let mw = monitor.size().width as i32;
+                    let mh = monitor.size().height as i32;
+                    let scale = monitor.scale_factor();
+                    let w = (560.0 * scale).round() as i32;
+                    let h = (440.0 * scale).round() as i32;
+                    let x = (mw - w) / 2;
+                    let y = (mh as f64 / 3.5) as i32;
+                    let _ = win.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
+                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                    let _ = win.show();
+                    let _ = win.set_always_on_top(true);
+                    let _ = win.set_focus();
+                    let _ = app.emit_to("spotlight", "spotlight:show", ());
+                }
+            }
         }
 
         // Win-key tap toggles visibility regardless of cursor position.

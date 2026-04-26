@@ -71,6 +71,26 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     apply_noactivate(&hud);
     clip_to_rounded(&hud, 22.0, scale);
 
+    // Spotlight launcher window. Created hidden + centered; show_spotlight
+    // repositions and shows it when the Ctrl+Alt+Space hotkey fires.
+    let spotlight = WebviewWindowBuilder::new(app, "spotlight", WebviewUrl::App("spotlight/index.html".into()))
+        .title("")
+        .inner_size(560.0, 440.0)
+        .position((screen_w - 560.0) / 2.0, screen_h / 4.0)
+        .decorations(false)
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .build()?;
+    force_webview_transparent(&spotlight);
+    apply_glass(&spotlight);
+    // Like the right-click menu, spotlight needs focus for keyboard input;
+    // do NOT mark it no-activate.
+
     // Pre-create the right-click context menu window. Hidden until something
     // calls `show_menu`. Fixed initial size; show_menu re-sizes per content.
     let menu = WebviewWindowBuilder::new(app, "menu", WebviewUrl::App("menu/index.html".into()))

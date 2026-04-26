@@ -1,0 +1,87 @@
+.spotlight-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  animation: spot-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes spot-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.spotlight-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.spotlight-glyph {
+  font-size: 20px;
+  color: var(--glass-fg-dim);
+  width: 22px;
+  text-align: center;
+}
+#q {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: var(--glass-fg);
+  font-size: 18px;
+  caret-color: #5cb6ff;
+}
+#q::placeholder { color: var(--glass-fg-dim); }
+
+.spotlight-results {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+.spotlight-results::-webkit-scrollbar { width: 6px; }
+.spotlight-results::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+}
+
+.spotlight-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 100ms ease;
+}
+.spotlight-row .name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spotlight-row .path {
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+.spotlight-row.selected {
+  background: rgba(92, 182, 255, 0.20);
+}
+.spotlight-row:hover { background: rgba(255,255,255,0.10); }
+
+.spotlight-empty {
+  padding: 14px 18px;
+  font-size: 13px;
+  color: var(--glass-fg-dim);
+  text-align: center;
+}

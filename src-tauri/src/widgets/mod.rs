@@ -4,5 +4,6 @@ pub mod media;
 pub mod audio;
 pub mod internet;
 pub mod sysstats;
+pub mod start_menu;
 pub mod battery;
 pub mod weather;
