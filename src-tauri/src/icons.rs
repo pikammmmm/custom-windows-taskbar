@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use windows::core::{Interface, PCWSTR};
-use windows::Win32::Foundation::{HANDLE, SIZE};
+use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, SIZE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC,
     SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
@@ -15,24 +15,29 @@ use windows::Win32::UI::Shell::{
     SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
     SIIGBF_BIGGERSIZEOK, SIIGBF_RESIZETOFIT,
 };
-use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL, HICON};
+use windows::Win32::UI::WindowsAndMessaging::{
+    DestroyIcon, DrawIconEx, GetClassLongPtrW, SendMessageTimeoutW,
+    DI_NORMAL, GCLP_HICON, GCLP_HICONSM, HICON, ICON_BIG, ICON_SMALL, ICON_SMALL2,
+    SMTO_ABORTIFHUNG, WM_GETICON,
+};
 
 use crate::config;
 
 const ICON_SIZE: u32 = 32;
+const CACHE_VERSION: &str = "v2";
 
-pub fn get_icon_png(exe_path: &str) -> Result<Vec<u8>> {
+pub fn get_icon_png(exe_path: &str, hwnd: Option<isize>) -> Result<Vec<u8>> {
     let cache_path = cache_path_for(exe_path)?;
     if cache_path.exists() {
         return Ok(std::fs::read(&cache_path)?);
     }
-    let png = extract_icon_png(exe_path)?;
+    let png = extract_icon_png(exe_path, hwnd)?;
     let _ = std::fs::write(&cache_path, &png);
     Ok(png)
 }
 
-pub fn get_icon_data_url(exe_path: &str) -> Result<String> {
-    let png = get_icon_png(exe_path)?;
+pub fn get_icon_data_url(exe_path: &str, hwnd: Option<isize>) -> Result<String> {
+    let png = get_icon_png(exe_path, hwnd)?;
     use base64::Engine;
     Ok(format!(
         "data:image/png;base64,{}",
@@ -42,13 +47,24 @@ pub fn get_icon_data_url(exe_path: &str) -> Result<String> {
 
 fn cache_path_for(exe_path: &str) -> Result<PathBuf> {
     let mut h = Sha256::new();
+    h.update(CACHE_VERSION.as_bytes());
+    h.update(b":");
     h.update(exe_path.as_bytes());
     let hash = format!("{:x}", h.finalize());
     Ok(config::icon_cache_dir()?.join(format!("{}.png", &hash[..16])))
 }
 
-fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
-    // Best path: IShellItemImageFactory. Same API File Explorer uses; handles
+fn extract_icon_png(exe_path: &str, hwnd: Option<isize>) -> Result<Vec<u8>> {
+    // Best path when we have a window handle: WM_GETICON returns the exact
+    // icon the application set on its window. This is what the Windows
+    // taskbar uses, so it works for UWP, Java apps, Electron, anything.
+    if let Some(h) = hwnd {
+        if let Ok(png) = extract_via_window(h) {
+            if !looks_generic(&png) { return Ok(png); }
+        }
+    }
+
+    // Next: IShellItemImageFactory. Same API File Explorer uses; handles
     // UWP package manifests, MSIX, traditional exes, and shell-shortcut
     // chains uniformly. Falls back through ExtractIconExW (PE resources) and
     // SHGetFileInfo (shell associations) for the rare cases this fails.
@@ -90,6 +106,48 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
         return Err(anyhow!("only generic icon available for {exe_path}"));
     }
     Ok(data)
+}
+
+fn extract_via_window(hwnd: isize) -> Result<Vec<u8>> {
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        let icon = window_icon_handle(h).ok_or_else(|| anyhow!("no window icon"))?;
+        // The HICON returned by WM_GETICON / GetClassLongPtr is OWNED by the
+        // window or its class — we render it to a PNG without taking ownership
+        // and never call DestroyIcon on it.
+        hicon_to_png(icon, ICON_SIZE)
+    }
+}
+
+unsafe fn window_icon_handle(hwnd: HWND) -> Option<HICON> {
+    // Try the icons set explicitly on this window first. Most apps set
+    // ICON_BIG (32x32 typical); some only set ICON_SMALL2 (taskbar size) or
+    // ICON_SMALL (16x16). Use a short timeout so a stuck window can't hang us.
+    for which in [ICON_BIG, ICON_SMALL2, ICON_SMALL] {
+        let mut result: usize = 0;
+        let r = SendMessageTimeoutW(
+            hwnd,
+            WM_GETICON,
+            WPARAM(which as usize),
+            LPARAM(0),
+            SMTO_ABORTIFHUNG,
+            150,
+            Some(&mut result),
+        );
+        if r.0 != 0 && result != 0 {
+            return Some(HICON(result as *mut _));
+        }
+    }
+    // Fall back to icons registered on the window class.
+    let class_big = GetClassLongPtrW(hwnd, GCLP_HICON);
+    if class_big != 0 {
+        return Some(HICON(class_big as *mut _));
+    }
+    let class_small = GetClassLongPtrW(hwnd, GCLP_HICONSM);
+    if class_small != 0 {
+        return Some(HICON(class_small as *mut _));
+    }
+    None
 }
 
 fn ensure_com() {

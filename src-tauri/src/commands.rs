@@ -38,8 +38,8 @@ pub fn get_pinned(state: State<'_, pinned::PinnedHandle>) -> Vec<pinned::PinnedA
 }
 
 #[tauri::command]
-pub fn get_icon(exe_path: String) -> Result<String, String> {
-    icons::get_icon_data_url(&exe_path).map_err(|e| e.to_string())
+pub fn get_icon(exe_path: String, hwnd: Option<isize>) -> Result<String, String> {
+    icons::get_icon_data_url(&exe_path, hwnd).map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]

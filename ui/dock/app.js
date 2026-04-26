@@ -13,10 +13,10 @@ function closeMenu() {
 document.addEventListener('click', closeMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
 
-async function getIcon(exePath) {
+async function getIcon(exePath, hwnd) {
   if (iconCache.has(exePath)) return iconCache.get(exePath);
   try {
-    const url = await invoke('get_icon', { exePath });
+    const url = await invoke('get_icon', { exePath, hwnd: hwnd ?? null });
     iconCache.set(exePath, url);
     return url;
   } catch {
@@ -62,7 +62,8 @@ async function iconNode({ exe, label, running }) {
   const node = document.createElement('div');
   node.className = 'dock-icon';
 
-  const url = await getIcon(exe);
+  const hwnd = running?.windows?.[0]?.hwnd ?? null;
+  const url = await getIcon(exe, hwnd);
   if (url) {
     const img = document.createElement('img');
     img.src = url;
