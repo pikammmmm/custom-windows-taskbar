@@ -205,6 +205,21 @@ el.appsToggle.addEventListener('click', () => {
   el.appsList.classList.toggle('collapsed', expanded);
 });
 
+// Settings section
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsList = document.getElementById('settings-list');
+const setAutostart = document.getElementById('set-autostart');
+settingsToggle.addEventListener('click', () => {
+  const expanded = settingsToggle.getAttribute('aria-expanded') === 'true';
+  settingsToggle.setAttribute('aria-expanded', String(!expanded));
+  settingsList.classList.toggle('collapsed', expanded);
+});
+// Initialise the autostart toggle from the registry-backed truth source.
+invoke('get_autostart').then((on) => { setAutostart.checked = !!on; }).catch(() => {});
+setAutostart.addEventListener('change', (e) => {
+  invoke('set_autostart', { enable: e.target.checked }).catch(() => {});
+});
+
 // Quick toggles — `data-uri` opens a Windows Settings deep link,
 // `data-action` runs a named backend command instead.
 const QUICK_ACTIONS = {

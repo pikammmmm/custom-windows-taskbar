@@ -296,6 +296,37 @@
 }
 .quick-btn:active { transform: scale(0.94); }
 
+/* Settings section — collapsible. Reuses .apps-header styles for the header. */
+.settings-block { padding: 6px 6px 8px; }
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  max-height: 400px;
+  overflow: hidden;
+  transition: max-height 220ms ease, opacity 180ms ease;
+  opacity: 1;
+}
+.settings-list.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding: 0 8px;
+  pointer-events: none;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.settings-row input[type=checkbox] {
+  accent-color: #5cb6ff;
+  cursor: pointer;
+}
+
 /* Apps section — collapsible */
 .apps-block { padding: 6px 6px 8px; }
 .apps-header {
