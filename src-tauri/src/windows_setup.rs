@@ -1,5 +1,5 @@
 use tauri::{App, WebviewUrl, WebviewWindowBuilder};
-use window_vibrancy::{apply_acrylic, apply_mica};
+use window_vibrancy::{apply_acrylic, apply_mica, apply_tabbed};
 use anyhow::Result;
 
 use crate::dwm;
@@ -41,11 +41,21 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 }
 
 fn apply_glass(window: &tauri::WebviewWindow) {
-    // Acrylic first — more transparent / glassy. Mica fallback for older Win10.
-    if let Err(acrylic_err) = apply_acrylic(window, Some((10, 10, 14, 70))) {
-        if let Err(mica_err) = apply_mica(window, Some(true)) {
-            tracing::warn!(?acrylic_err, ?mica_err, "blur unavailable on this OS");
-        }
+    // Tabbed Mica is the most see-through Win11 effect (used by Settings app).
+    // Fall back to regular Mica, then Acrylic for older Win10 builds.
+    let e_tabbed = apply_tabbed(window, Some(true)).err();
+    let e_mica = if e_tabbed.is_some() {
+        apply_mica(window, Some(true)).err()
+    } else {
+        None
+    };
+    let e_acrylic = if e_tabbed.is_some() && e_mica.is_some() {
+        apply_acrylic(window, Some((0, 0, 0, 50))).err()
+    } else {
+        None
+    };
+    if e_tabbed.is_some() && e_mica.is_some() && e_acrylic.is_some() {
+        tracing::warn!(?e_tabbed, ?e_mica, ?e_acrylic, "no glass effect available");
     }
 
     if let Ok(hwnd) = window.hwnd() {

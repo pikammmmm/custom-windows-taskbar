@@ -7,7 +7,7 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
     BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
 };
-use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+use windows::Win32::UI::Shell::{ExtractIconExW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL, HICON};
 
 use crate::config;
@@ -42,6 +42,29 @@ fn cache_path_for(exe_path: &str) -> Result<PathBuf> {
 
 fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
     let wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
+
+    // ExtractIconExW pulls the actual icon resource from the exe's binary,
+    // bypassing shell file-type associations that often return the generic
+    // Windows app icon for unfamiliar executables.
+    let mut large = HICON(std::ptr::null_mut());
+    let count = unsafe {
+        ExtractIconExW(
+            PCWSTR(wide.as_ptr()),
+            0,
+            Some(&mut large),
+            None,
+            1,
+        )
+    };
+    if count > 0 && !large.0.is_null() {
+        let png = hicon_to_png(large, ICON_SIZE);
+        unsafe { let _ = DestroyIcon(large); }
+        if let Ok(data) = png {
+            return Ok(data);
+        }
+    }
+
+    // Fallback to SHGetFileInfo for paths ExtractIconExW couldn't handle.
     let mut info = SHFILEINFOW::default();
     let result = unsafe {
         SHGetFileInfoW(
@@ -53,13 +76,10 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
         )
     };
     if result == 0 || info.hIcon.0.is_null() {
-        return Err(anyhow!("SHGetFileInfoW returned no icon for {exe_path}"));
+        return Err(anyhow!("no icon for {exe_path}"));
     }
-
     let png = hicon_to_png(info.hIcon, ICON_SIZE);
-    unsafe {
-        let _ = DestroyIcon(info.hIcon);
-    }
+    unsafe { let _ = DestroyIcon(info.hIcon); }
     png
 }
 
