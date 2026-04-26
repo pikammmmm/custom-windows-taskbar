@@ -33,6 +33,10 @@ fn run(app: AppHandle) {
     let hidden_y = screen_h;
 
     let mut visible = true;
+    // True between Win-tap-to-show and the next Win-tap. While set, cursor-based
+    // auto-hide is suppressed so the dock stays put — matches the user's mental
+    // model of "tap Win to show, tap again to hide."
+    let mut win_pinned = false;
     let mut last_in_zone = Instant::now();
     let dock_hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     let hud_hwnd = app.get_webview_window("hud")
@@ -71,7 +75,7 @@ fn run(app: AppHandle) {
                 visible = true;
                 start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
             }
-        } else if visible && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
+        } else if visible && !win_pinned && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
             visible = false;
             start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
         }
@@ -80,10 +84,12 @@ fn run(app: AppHandle) {
         if keyhook::take_toggle_request() {
             if visible {
                 visible = false;
+                win_pinned = false;
                 start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
             } else {
                 visible = true;
-                last_in_zone = Instant::now(); // give the user time to interact
+                win_pinned = true;
+                last_in_zone = Instant::now();
                 start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
             }
         }
@@ -102,19 +108,18 @@ fn run(app: AppHandle) {
             }
         }
 
-        // Periodically re-assert topmost so the dock + HUD stay above
-        // borderless-fullscreen apps and F11'd browsers. Also re-strip
-        // decorations because Tauri/Win11 occasionally re-asserts WS_CAPTION
-        // (especially after first paint or window-show events).
+        // Re-strip decorations EVERY tick — strip_decorations is a cheap no-op
+        // when WS_CAPTION isn't set, so polling at 60Hz catches the OS
+        // re-asserting it within one frame instead of up to TOPMOST_REASSERT_MS
+        // later (which is what caused the random white bar at the top of the HUD).
+        if dock_hwnd != 0 { dwm::strip_decorations(dock_hwnd); }
+        if hud_hwnd != 0 { dwm::strip_decorations(hud_hwnd); }
+
+        // Re-assert topmost on a slower cadence — this one isn't a no-op so we
+        // don't want it 60×/sec.
         if topmost_tick.elapsed().as_millis() >= TOPMOST_REASSERT_MS {
-            if dock_hwnd != 0 {
-                dwm::assert_topmost(dock_hwnd);
-                dwm::strip_decorations(dock_hwnd);
-            }
-            if hud_hwnd != 0 {
-                dwm::assert_topmost(hud_hwnd);
-                dwm::strip_decorations(hud_hwnd);
-            }
+            if dock_hwnd != 0 { dwm::assert_topmost(dock_hwnd); }
+            if hud_hwnd != 0 { dwm::assert_topmost(hud_hwnd); }
             topmost_tick = Instant::now();
         }
     }

@@ -4,7 +4,31 @@
 <link rel="stylesheet" href="style.css"></head>
 <body>
   <div class="glass-card">
-    <div id="dock-row" class="dock-row"></div>
+    <div class="dock-row">
+      <!-- Left: start button -->
+      <div class="dock-section dock-left" id="dock-left"></div>
+
+      <!-- Center: pinned + running, scrolls horizontally on overflow -->
+      <div class="dock-section dock-center" id="dock-center"></div>
+
+      <!-- Right: tray status chips + HUD toggle -->
+      <div class="dock-section dock-right">
+        <div class="tray" id="tray">
+          <div class="tray-chip net-chip" id="tray-net" title="Network">
+            <span class="tray-icon" id="tray-net-icon">●</span>
+          </div>
+          <div class="tray-chip vol-chip" id="tray-vol" title="Volume">
+            <span class="tray-icon" id="tray-vol-icon">🔊</span>
+            <span class="tray-val" id="tray-vol-val">--%</span>
+          </div>
+          <div class="tray-chip clock-chip" id="tray-clock" title="Clock">
+            <span id="tray-time">--:--</span>
+          </div>
+        </div>
+        <div class="dock-divider"></div>
+        <div id="dock-hud-toggle"></div>
+      </div>
+    </div>
   </div>
   <script type="module" src="app.js"></script>
 </body></html>

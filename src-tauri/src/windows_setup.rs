@@ -30,7 +30,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     let screen_w = size.width as f64 / scale;
     let screen_h = size.height as f64 / scale;
 
-    let dock_w = 760.0;
+    let dock_w = 900.0;
     let dock_h = 64.0;
     let dock = WebviewWindowBuilder::new(app, "dock", WebviewUrl::App("dock/index.html".into()))
         .title("")
@@ -49,7 +49,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     clip_to_rounded(&dock, 22.0, scale);
 
     let hud_w = 280.0;
-    let hud_h = 380.0;
+    let hud_h = 500.0;
     let settings = crate::config::load_settings().unwrap_or_default();
     let (hud_x, hud_y) = settings.hud_position
         .unwrap_or((screen_w - hud_w - 12.0, 12.0));
@@ -68,6 +68,27 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     force_webview_transparent(&hud);
     apply_glass(&hud);
     clip_to_rounded(&hud, 22.0, scale);
+
+    // Pre-create the right-click context menu window. Hidden until something
+    // calls `show_menu`. Fixed initial size; show_menu re-sizes per content.
+    let menu = WebviewWindowBuilder::new(app, "menu", WebviewUrl::App("menu/index.html".into()))
+        .title("")
+        .inner_size(240.0, 400.0)
+        .position(0.0, 0.0)
+        .decorations(false)
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .build()?;
+    force_webview_transparent(&menu);
+    apply_glass(&menu);
+    // Don't apply rounded region here — show_menu re-sizes the window per use,
+    // and SetWindowRgn is one-shot per dimensions. CSS border-radius on the
+    // menu card handles visual rounding instead.
 
     Ok(())
 }
@@ -95,5 +116,6 @@ fn apply_glass(window: &tauri::WebviewWindow) {
     dwm::make_layered_with_alpha(h, 160);
     dwm::make_noactivate(h);
     dwm::strip_decorations(h);
+    dwm::suppress_nc_rendering(h);
     dwm::round_corners(h);
 }

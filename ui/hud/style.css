@@ -4,14 +4,27 @@
   padding: 0;
   position: relative;
   overflow: hidden;
+  animation: hud-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+.hud.hiding {
+  animation: hud-out 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes hud-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes hud-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(8px); }
+}
+
 .hud-scroll {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 14px 14px 14px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
@@ -23,40 +36,113 @@
   border-radius: 3px;
 }
 
-.row {
+/* Section card baseline — every block sits inside this. */
+.block {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
-.sep {
-  height: 1px;
-  background: rgba(255,255,255,0.08);
-  margin: 2px -4px;
-}
-
-.section-label {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--glass-fg-dim);
-  margin-bottom: 4px;
-}
-
-.clock-row .time {
-  font-size: 32px;
+/* Clock */
+.clock-block { padding: 12px 14px; }
+.clock-block .time {
+  font-size: 36px;
   font-weight: 300;
-  letter-spacing: -1px;
+  letter-spacing: -1.2px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.clock-block .date {
+  font-size: 12px;
+  color: var(--glass-fg-dim);
+  margin-top: 4px;
+}
+
+/* Weather */
+.weather-block {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, rgba(96,160,255,0.12), rgba(168,120,255,0.08));
+}
+.weather-icon {
+  font-size: 32px;
+  line-height: 1;
+  width: 40px;
+  text-align: center;
+  filter: drop-shadow(0 0 6px rgba(255, 220, 120, 0.35));
+}
+.weather-meta { flex: 1; min-width: 0; }
+.weather-temp {
+  font-size: 20px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.clock-row .date {
-  font-size: 12px;
+.weather-sub {
+  font-size: 11px;
   color: var(--glass-fg-dim);
-  margin-top: 2px;
+  margin-top: 4px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.weather-loc {
+  margin-left: auto;
+  opacity: 0.7;
 }
 
-.net-row { gap: 6px; }
+/* Stats chips */
+.chips-row {
+  display: flex;
+  gap: 6px;
+}
+.chip {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.chip-label {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--glass-fg-dim);
+}
+.chip-value {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.chip-bar {
+  height: 3px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.chip-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4ad, #6cf);
+  border-radius: 2px;
+  transition: width 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              background 200ms ease;
+}
+.chip-bar-fill.warn { background: linear-gradient(90deg, #fc6, #fa7); }
+.chip-bar-fill.crit { background: linear-gradient(90deg, #f77, #f55); }
+.battery-chip .chip-bar-fill { background: linear-gradient(90deg, #6e6, #4d4); }
+.battery-chip.charging .chip-label::after { content: ' ⚡'; color: #ffd166; }
+
+/* Network */
+.net-block { gap: 6px; }
 .net-status {
   display: flex;
   align-items: center;
@@ -69,6 +155,7 @@
   border-radius: 50%;
   background: var(--glass-fg-dim);
   box-shadow: 0 0 6px rgba(255,255,255,0.15);
+  transition: background 240ms ease, box-shadow 240ms ease;
 }
 .status-dot.on { background: #58e07b; box-shadow: 0 0 8px rgba(88,224,123,0.6); }
 .status-dot.off { background: #ff6b6b; box-shadow: 0 0 8px rgba(255,107,107,0.55); }
@@ -91,30 +178,11 @@
   color: var(--glass-fg-dim);
   font-variant-numeric: tabular-nums;
 }
-.arrow { color: #7ad; font-weight: bold; }
-.arrow.up { color: #fa7; }
+.arrow.down { color: #7ad; font-weight: bold; }
+.arrow.up   { color: #fa7; font-weight: bold; }
 
-.toast {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-size: 12px;
-  background: rgba(20, 24, 34, 0.85);
-  border: 1px solid rgba(255,255,255,0.12);
-  backdrop-filter: blur(20px);
-  text-align: center;
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 180ms ease, transform 180ms ease;
-  pointer-events: none;
-}
-.toast.show { opacity: 1; transform: translateY(0); }
-.toast.good { border-color: rgba(88,224,123,0.45); }
-.toast.bad  { border-color: rgba(255,107,107,0.5); }
-
+/* Audio + media */
+.audio-block { gap: 8px; }
 .audio-line {
   display: flex;
   align-items: center;
@@ -156,7 +224,6 @@
   min-width: 32px;
   text-align: right;
 }
-
 .media-row .title {
   font-size: 13px;
   font-weight: 500;
@@ -172,28 +239,79 @@
   text-overflow: ellipsis;
 }
 
-.apps-row { display: flex; flex-direction: column; }
+/* Quick toggles */
+.quick-row {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+.quick-btn {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid transparent;
+  color: var(--glass-fg);
+  font-size: 16px;
+  border-radius: 8px;
+  padding: 8px 0;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease, transform 100ms ease;
+}
+.quick-btn:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.16);
+}
+.quick-btn:active { transform: scale(0.94); }
+
+/* Apps section — collapsible */
+.apps-block { padding: 6px 6px 8px; }
+.apps-header {
+  background: transparent;
+  border: none;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--glass-fg-dim);
+}
+.apps-header:hover { background: rgba(255,255,255,0.06); color: var(--glass-fg); }
+.apps-caret {
+  margin-left: auto;
+  font-size: 10px;
+  transition: transform 180ms ease;
+}
+.apps-header[aria-expanded="false"] .apps-caret { transform: rotate(-90deg); }
 .apps-list {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 220ms ease, opacity 180ms ease;
+  opacity: 1;
+}
+.apps-list.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 .apps-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
+  padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
+  transition: background 100ms ease;
 }
 .apps-item:hover { background: rgba(255,255,255,0.10); }
-.apps-item .name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.apps-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .apps-item .count {
   color: var(--glass-fg-dim);
   font-size: 10px;
@@ -214,9 +332,35 @@
 .apps-item:hover .app-close { opacity: 1; }
 .apps-item .app-close:hover { color: #ff7676; background: rgba(255, 80, 80, 0.18); }
 
+/* Toast */
+.toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(20, 24, 34, 0.85);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(20px);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 180ms ease, transform 180ms ease;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.good { border-color: rgba(88,224,123,0.45); }
+.toast.bad  { border-color: rgba(255,107,107,0.5); }
+
+/* Drag handle — invisible until hover */
 .drag-handle {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 8px;
   cursor: grab;
+  background: transparent;
+  transition: background 120ms ease;
 }
+.drag-handle:hover { background: rgba(255,255,255,0.08); }

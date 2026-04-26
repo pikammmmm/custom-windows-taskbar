@@ -2,7 +2,8 @@ use anyhow::Result;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, BOOL, TRUE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_LWIN,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    VK_LWIN, VK_M,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowW, GetClassNameW, ShowWindow, SW_HIDE, SW_SHOW,
@@ -54,34 +55,42 @@ unsafe extern "system" fn collect_secondary(hwnd: HWND, lparam: LPARAM) -> BOOL 
 pub fn tap_start_key() -> Result<()> {
     unsafe {
         let inputs = [
-            INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: VK_LWIN,
-                        wScan: 0,
-                        dwFlags: Default::default(),
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                },
-            },
-            INPUT {
-                r#type: INPUT_KEYBOARD,
-                Anonymous: INPUT_0 {
-                    ki: KEYBDINPUT {
-                        wVk: VK_LWIN,
-                        wScan: 0,
-                        dwFlags: KEYEVENTF_KEYUP,
-                        time: 0,
-                        dwExtraInfo: 0,
-                    },
-                },
-            },
+            kb(VK_LWIN, false),
+            kb(VK_LWIN, true),
         ];
         SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
     }
     Ok(())
+}
+
+/// Send Win+M — minimizes every minimizable top-level window. Unlike Win+D
+/// this is not a toggle; restoring is up to the user.
+pub fn minimize_all_windows() -> Result<()> {
+    unsafe {
+        let inputs = [
+            kb(VK_LWIN, false),
+            kb(VK_M, false),
+            kb(VK_M, true),
+            kb(VK_LWIN, true),
+        ];
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+    Ok(())
+}
+
+fn kb(vk: VIRTUAL_KEY, key_up: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: if key_up { KEYEVENTF_KEYUP } else { Default::default() },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
 }
 
 fn wide(s: &str) -> Vec<u16> {

@@ -12,6 +12,10 @@
 html, body {
   margin: 0;
   padding: 0;
+  /* Explicit 100% height — without this, .glass-card { height: 100% } resolves
+     to 0 because body is auto-sized by content. That collapses the HUD's
+     flex:1 scroll container, breaking mousewheel scrolling. */
+  height: 100%;
   background: transparent;
   color: var(--glass-fg);
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;

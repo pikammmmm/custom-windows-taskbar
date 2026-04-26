@@ -5,54 +5,82 @@
 <body>
   <div class="glass-card hud" id="hud">
     <div class="hud-scroll">
-      <div class="row clock-row">
+      <!-- Clock + date — the primary anchor for the HUD -->
+      <section class="block clock-block">
         <div class="time" id="time">--:--</div>
         <div class="date" id="date">--</div>
-      </div>
+      </section>
 
-      <div class="sep"></div>
+      <!-- Weather card (Maribor) -->
+      <section class="block weather-block" id="weather-block">
+        <div class="weather-icon" id="wx-icon">·</div>
+        <div class="weather-meta">
+          <div class="weather-temp" id="wx-temp">--°</div>
+          <div class="weather-sub">
+            <span id="wx-cond">…</span>
+            <span class="weather-loc">Maribor</span>
+          </div>
+        </div>
+      </section>
 
-      <div class="row net-row">
-        <div class="net-status" id="net-status">
+      <!-- Stats chips: CPU, RAM, Battery -->
+      <section class="chips-row">
+        <div class="chip" id="cpu-chip" title="CPU usage">
+          <div class="chip-label">CPU</div>
+          <div class="chip-value" id="cpu-val">--%</div>
+          <div class="chip-bar"><div class="chip-bar-fill" id="cpu-bar"></div></div>
+        </div>
+        <div class="chip" id="ram-chip" title="RAM usage">
+          <div class="chip-label">RAM</div>
+          <div class="chip-value" id="ram-val">--%</div>
+          <div class="chip-bar"><div class="chip-bar-fill" id="ram-bar"></div></div>
+        </div>
+      </section>
+
+      <!-- Network: online dot + ping + rates -->
+      <section class="block net-block">
+        <div class="net-status">
           <span class="status-dot" id="net-dot"></span>
           <span class="status-text" id="net-text">Checking…</span>
           <span class="status-ping" id="net-ping"></span>
         </div>
         <div class="net-rates">
-          <div class="net-line">
-            <span class="arrow down">↓</span>
-            <span class="rate" id="down">0 KB/s</span>
-          </div>
-          <div class="net-line">
-            <span class="arrow up">↑</span>
-            <span class="rate" id="up">0 KB/s</span>
-          </div>
+          <div class="net-line"><span class="arrow down">↓</span><span id="down">0 KB/s</span></div>
+          <div class="net-line"><span class="arrow up">↑</span><span id="up">0 KB/s</span></div>
         </div>
-      </div>
+      </section>
 
-      <div class="sep"></div>
-
-      <div class="row audio-row">
+      <!-- Audio + media -->
+      <section class="block audio-block">
         <div class="audio-line">
           <button class="vol-icon" id="vol-icon" title="Mute / unmute">🔊</button>
           <input type="range" id="vol-slider" min="0" max="100" value="50">
           <span class="vol-pct" id="vol-pct">--%</span>
         </div>
-      </div>
+        <div class="media-row" id="media-row">
+          <div class="title" id="media-title">Nothing playing</div>
+          <div class="artist" id="media-artist"></div>
+        </div>
+      </section>
 
-      <div class="sep"></div>
+      <!-- Quick toggles row → Windows Settings deep links + actions -->
+      <section class="quick-row">
+        <button class="quick-btn" data-uri="ms-settings:network-wifi" title="Wi-Fi settings">📶</button>
+        <button class="quick-btn" data-uri="ms-settings:bluetooth"     title="Bluetooth settings">📱</button>
+        <button class="quick-btn" data-uri="ms-settings:quiethours"    title="Focus mode">🌙</button>
+        <button class="quick-btn" data-uri="ms-settings:display"       title="Display settings">🖥</button>
+        <button class="quick-btn" data-action="minimize-all"           title="Minimize all windows">🗕</button>
+        <button class="quick-btn" data-uri="ms-settings:"              title="All Settings">⚙</button>
+      </section>
 
-      <div class="row media-row" id="media-row">
-        <div class="title" id="media-title">Nothing playing</div>
-        <div class="artist" id="media-artist"></div>
-      </div>
-
-      <div class="sep"></div>
-
-      <div class="row apps-row">
-        <div class="section-label" id="apps-label">Apps</div>
+      <!-- Background apps — collapsible, defaults open -->
+      <section class="block apps-block">
+        <button class="apps-header" id="apps-toggle" aria-expanded="true">
+          <span id="apps-label">Background apps</span>
+          <span class="apps-caret" id="apps-caret">▾</span>
+        </button>
         <div class="apps-list" id="apps-list"></div>
-      </div>
+      </section>
     </div>
 
     <div class="drag-handle" id="drag"></div>

@@ -1,8 +1,8 @@
-use crate::{win32, pinned, icons, config, autostart, shell_taskbar};
+use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar};
 use crate::widgets::audio;
 use std::process::Command;
-use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State};
 
 #[tauri::command]
 pub fn launch(path: String) -> Result<(), String> {
@@ -10,6 +10,18 @@ pub fn launch(path: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("launch failed: {e}"))
+}
+
+/// Open a Windows shell URI (`ms-settings:`, `https://`, etc) via cmd /c
+/// start. The empty title arg is required when start receives a single
+/// quoted token — otherwise cmd misparses it as the title.
+#[tauri::command]
+pub fn launch_uri(uri: String) -> Result<(), String> {
+    Command::new("cmd")
+        .args(["/c", "start", "", &uri])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("launch_uri failed: {e}"))
 }
 
 #[tauri::command]
@@ -115,6 +127,11 @@ pub fn open_start_menu() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn minimize_all_windows() -> Result<(), String> {
+    shell_taskbar::minimize_all_windows().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn hide_windows_taskbar() -> Result<usize, String> {
     shell_taskbar::hide_windows_taskbar().map_err(|e| e.to_string())
 }
@@ -130,11 +147,20 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
         .ok_or_else(|| "hud window missing".to_string())?;
     let visible = win.is_visible().map_err(|e| e.to_string())?;
     if visible {
-        win.hide().map_err(|e| e.to_string())?;
+        // Play the HUD's outgoing CSS animation, then hide the window after
+        // it finishes — without the delay we'd flash off mid-animation.
+        let _ = app.emit_to("hud", "hud:hide-anim", ());
+        let win_clone = win.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(190));
+            let _ = win_clone.hide();
+        });
         Ok(false)
     } else {
         win.show().map_err(|e| e.to_string())?;
         win.set_always_on_top(true).map_err(|e| e.to_string())?;
+        // Fire-and-forget — HUD JS retriggers the entrance animation.
+        let _ = app.emit_to("hud", "hud:show-anim", ());
         Ok(true)
     }
 }
@@ -143,6 +169,86 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
 pub fn close_hwnds(hwnds: Vec<isize>) -> Result<(), String> {
     for h in hwnds {
         let _ = win32::close(h);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn app_info(exe_path: String) -> Result<app_actions::AppInfo, String> {
+    app_actions::app_info(&exe_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn show_in_explorer(path: String) -> Result<(), String> {
+    app_actions::show_in_explorer(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn run_as_admin(path: String) -> Result<(), String> {
+    app_actions::run_as_admin(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn show_properties(path: String) -> Result<(), String> {
+    app_actions::show_properties(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn copy_to_clipboard(text: String) -> Result<(), String> {
+    app_actions::copy_to_clipboard(&text).map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+pub struct ShowMenuArgs {
+    pub items: serde_json::Value,
+    /// Cursor X in physical pixels (event.screenX × devicePixelRatio).
+    pub x: i32,
+    /// Cursor Y in physical pixels.
+    pub y: i32,
+    /// Pre-measured menu width (CSS pixels) so we can clamp to the screen.
+    pub width: u32,
+    /// Pre-measured menu height (CSS pixels).
+    pub height: u32,
+}
+
+/// Position the dedicated menu window near the cursor, clamp it to the
+/// monitor bounds, then show it. The menu's own JS renders the items via
+/// the `menu:items` event we emit here.
+#[tauri::command]
+pub fn show_menu(app: AppHandle, args: ShowMenuArgs) -> Result<(), String> {
+    let win = app.get_webview_window("menu")
+        .ok_or_else(|| "no menu window".to_string())?;
+    let monitor = win.current_monitor().ok().flatten()
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let scale = monitor.scale_factor();
+    let mon_w = monitor.size().width as i32;
+    let mon_h = monitor.size().height as i32;
+    let w_px = (args.width as f64 * scale).round() as i32;
+    let h_px = (args.height as f64 * scale).round() as i32;
+    // Anchor the menu's top-right corner near the cursor — most right-clicks
+    // happen on dock icons whose tooltips fly upward, so opening upward feels
+    // natural. Clamp so it never spills past the right or top edge.
+    let mut x = args.x - w_px;
+    let mut y = args.y - h_px;
+    if x + w_px > mon_w { x = mon_w - w_px; }
+    if x < 0 { x = 0; }
+    if y + h_px > mon_h { y = mon_h - h_px; }
+    if y < 0 { y = 0; }
+
+    win.set_size(PhysicalSize::new(w_px as u32, h_px as u32))
+        .map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+    app.emit_to("menu", "menu:items", args.items).map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn hide_menu(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("menu") {
+        win.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
 }

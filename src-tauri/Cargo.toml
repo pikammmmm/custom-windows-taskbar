@@ -33,15 +33,21 @@ windows = { version = "0.58", features = [
   "Win32_Media_Audio_Endpoints",
   "Media_Control",
   "Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Power",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Registry",
 ] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
-sysinfo = { version = "0.32", default-features = false, features = ["network"] }
+sysinfo = { version = "0.32", default-features = false, features = ["network", "system"] }
 winreg = "0.52"
 webview2-com = "0.38"
 windows-core = "0.61"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 tempfile = "3"
