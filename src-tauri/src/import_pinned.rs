@@ -78,6 +78,25 @@ fn shell_target_for(display_name: &str) -> Option<String> {
     }
 }
 
+/// Resolve a dropped path into (exe_path, display_name). Accepts:
+///   - `.exe` → returns the path verbatim with the file stem as the name
+///   - `.lnk` → resolves the shortcut's target via IShellLink
+///   - anything else → returns None (silently ignore non-launchables)
+pub fn resolve_drop(path: &Path) -> Option<(String, String)> {
+    ensure_com();
+    let ext = path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
+    let display = path.file_stem().and_then(|s| s.to_str())?.to_string();
+    match ext.as_deref() {
+        Some("exe") => Some((path.to_string_lossy().to_string(), display)),
+        Some("lnk") => {
+            let target = resolve_lnk(path).ok()?;
+            if !Path::new(&target).is_file() { return None; }
+            Some((target, display))
+        }
+        _ => None,
+    }
+}
+
 fn resolve_lnk(lnk: &Path) -> Result<String> {
     unsafe {
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
