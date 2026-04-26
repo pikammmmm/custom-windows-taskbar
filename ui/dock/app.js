@@ -352,6 +352,25 @@ async function onRightClick(exe, label, running, event) {
     }
   }
 
+  // Generic "Recent files" — top items from %APPDATA%\Microsoft\Windows\Recent.
+  // Not per-app (would need parsing the binary AutomaticDestinations files);
+  // best-effort signal that catches anything the user touched recently.
+  try {
+    const recents = await invoke('recent_files');
+    if (Array.isArray(recents) && recents.length > 0) {
+      items.push({ kind: 'separator' });
+      for (const r of recents) {
+        items.push({
+          kind: 'item',
+          glyph: '🕘',
+          label: truncate(r.name, 36),
+          action: 'launch_uri',
+          args: { uri: r.path },
+        });
+      }
+    }
+  } catch {}
+
   items.push({ kind: 'separator' });
   items.push({ kind: 'item', glyph: '↗', label: 'Launch new instance', action: 'launch',           args: { path: exe } });
   items.push({ kind: 'item', glyph: '📂', label: 'Show in Explorer',    action: 'show_in_explorer', args: { path: exe } });

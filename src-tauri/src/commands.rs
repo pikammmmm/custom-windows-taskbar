@@ -98,6 +98,11 @@ pub fn pin_app(
     Ok(PinResult { pinned: guard.clone() })
 }
 
+#[tauri::command]
+pub fn recent_files() -> Result<Vec<import_pinned::RecentFile>, String> {
+    import_pinned::recent_files(7).map_err(|e| e.to_string())
+}
+
 /// Pin a batch of dropped paths (from a window file-drop). Resolves
 /// `.lnk` to the target exe; silently skips anything that isn't a
 /// launchable .exe / .lnk so the user gets no surprise from dragging

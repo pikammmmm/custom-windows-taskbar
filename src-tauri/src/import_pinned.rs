@@ -78,6 +78,58 @@ fn shell_target_for(display_name: &str) -> Option<String> {
     }
 }
 
+/// One entry in the user's Recent folder, resolved to its target file.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RecentFile {
+    pub name: String,
+    pub path: String,
+    pub modified_secs: u64,
+}
+
+/// Read the user's Recent folder (`%APPDATA%\Microsoft\Windows\Recent\`),
+/// resolve each .lnk shortcut to its target file, and return the most
+/// recently modified entries first. Caps `limit` to keep the menu tight.
+pub fn recent_files(limit: usize) -> Result<Vec<RecentFile>> {
+    let appdata = std::env::var_os("APPDATA")
+        .ok_or_else(|| anyhow!("no %APPDATA%"))?;
+    let dir = PathBuf::from(appdata)
+        .join("Microsoft").join("Windows").join("Recent");
+    if !dir.is_dir() { return Ok(vec![]); }
+    ensure_com();
+
+    // Collect (modified_time, path) so we can sort newest-first.
+    let mut entries: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&dir)?
+        .filter_map(|r| r.ok())
+        .filter(|e| e.path().extension()
+            .and_then(|x| x.to_str())
+            .map(|s| s.eq_ignore_ascii_case("lnk"))
+            == Some(true))
+        .filter_map(|e| {
+            let path = e.path();
+            let mtime = e.metadata().ok().and_then(|m| m.modified().ok())?;
+            Some((mtime, path))
+        })
+        .collect();
+    entries.sort_by(|a, b| b.0.cmp(&a.0));
+
+    let mut out = Vec::with_capacity(limit);
+    for (mtime, lnk) in entries {
+        if out.len() >= limit { break; }
+        let Ok(target) = resolve_lnk(&lnk) else { continue };
+        if target.is_empty() || !Path::new(&target).exists() { continue; }
+        let name = lnk.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let secs = mtime
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        out.push(RecentFile { name, path: target, modified_secs: secs });
+    }
+    Ok(out)
+}
+
 /// Resolve a dropped path into (exe_path, display_name). Accepts:
 ///   - `.exe` → returns the path verbatim with the file stem as the name
 ///   - `.lnk` → resolves the shortcut's target via IShellLink
