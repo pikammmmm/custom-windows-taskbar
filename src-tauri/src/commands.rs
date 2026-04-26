@@ -1,5 +1,5 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar};
-use crate::widgets::audio;
+use crate::widgets::{audio, media};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -142,6 +142,19 @@ pub fn set_volume(percent: u8) -> Result<(), String> {
 #[tauri::command]
 pub fn set_mute(muted: bool) -> Result<(), String> {
     audio::set_mute(muted)
+}
+
+#[tauri::command]
+pub fn media_toggle_play() -> Result<(), String> {
+    media::toggle_play_pause().map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn media_next() -> Result<(), String> {
+    media::next().map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub fn media_prev() -> Result<(), String> {
+    media::prev().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

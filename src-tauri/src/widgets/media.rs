@@ -1,6 +1,7 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::Serialize;
 use windows::Media::Control::{
+    GlobalSystemMediaTransportControlsSession,
     GlobalSystemMediaTransportControlsSessionManager,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status,
 };
@@ -14,9 +15,7 @@ pub struct MediaState {
 }
 
 pub fn current() -> Result<MediaState> {
-    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?
-        .get()?;
-    let session = match manager.GetCurrentSession() {
+    let session = match current_session() {
         Ok(s) => s,
         Err(_) => return Ok(MediaState::default()),
     };
@@ -28,4 +27,27 @@ pub fn current() -> Result<MediaState> {
         playing: info.PlaybackStatus()? == Status::Playing,
         has_session: true,
     })
+}
+
+fn current_session() -> Result<GlobalSystemMediaTransportControlsSession> {
+    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?
+        .get()?;
+    manager.GetCurrentSession()
+        .map_err(|e| anyhow!("no active media session: {e}"))
+}
+
+pub fn toggle_play_pause() -> Result<()> {
+    let s = current_session()?;
+    s.TryTogglePlayPauseAsync()?.get()?;
+    Ok(())
+}
+pub fn next() -> Result<()> {
+    let s = current_session()?;
+    s.TrySkipNextAsync()?.get()?;
+    Ok(())
+}
+pub fn prev() -> Result<()> {
+    let s = current_session()?;
+    s.TrySkipPreviousAsync()?.get()?;
+    Ok(())
 }
