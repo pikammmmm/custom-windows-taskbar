@@ -173,6 +173,16 @@ pub fn set_mute(muted: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn list_audio_devices() -> Result<Vec<audio::AudioDevice>, String> {
+    audio::list_devices()
+}
+
+#[tauri::command]
+pub fn set_default_audio_device(id: String) -> Result<(), String> {
+    audio::set_default_device(&id)
+}
+
+#[tauri::command]
 pub fn media_toggle_play() -> Result<(), String> {
     media::toggle_play_pause().map_err(|e| e.to_string())
 }

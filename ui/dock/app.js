@@ -270,13 +270,50 @@ function updateTray(snap) {
   }
 }
 
-// Tray chips all open the HUD when clicked — that's where the full controls
-// (volume slider, settings shortcuts, network detail) actually live.
-for (const id of ['tray-vol', 'tray-net', 'tray-clock']) {
+// Tray chips → HUD for net + clock. Volume gets a custom popup with the
+// list of output devices, so click is more useful than toggling the HUD.
+for (const id of ['tray-net', 'tray-clock']) {
   document.getElementById(id).addEventListener('click', () => {
     invoke('toggle_hud').catch(() => {});
   });
 }
+tray.vol.addEventListener('click', async (e) => {
+  const items = [{ kind: 'header', name: 'Output device' }];
+  try {
+    const devices = await invoke('list_audio_devices');
+    if (Array.isArray(devices) && devices.length > 0) {
+      items.push({ kind: 'separator' });
+      for (const d of devices) {
+        items.push({
+          kind: 'item',
+          glyph: d.is_default ? '●' : '○',
+          label: d.name,
+          action: 'set_default_audio_device',
+          args: { id: d.id },
+        });
+      }
+    } else {
+      items.push({ kind: 'item', glyph: '·', label: 'No output devices', action: '', args: {} });
+    }
+  } catch {
+    items.push({ kind: 'item', glyph: '!', label: 'Failed to list devices', action: '', args: {} });
+  }
+  items.push({ kind: 'separator' });
+  items.push({
+    kind: 'item', glyph: '⚙', label: 'Sound settings',
+    action: 'launch_uri', args: { uri: 'ms-settings:sound' },
+  });
+  const dpr = window.devicePixelRatio || 1;
+  await invoke('show_menu', {
+    args: {
+      items,
+      x: Math.round(e.screenX * dpr),
+      y: Math.round(e.screenY * dpr),
+      width: 240,
+      height: estimateMenuHeight(items),
+    },
+  }).catch(() => {});
+});
 
 // ─────────────────────────────────────────────────────────────────────────
 // Click handlers + right-click menu (unchanged behavior, just relocated
