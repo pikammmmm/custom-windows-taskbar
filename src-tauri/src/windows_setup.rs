@@ -1,3 +1,4 @@
+use tauri::utils::config::Color;
 use tauri::{App, WebviewUrl, WebviewWindowBuilder};
 use window_vibrancy::{apply_acrylic, apply_blur, apply_mica};
 use anyhow::Result;
@@ -20,6 +21,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .position((screen_w - dock_w) / 2.0, screen_h - dock_h - 12.0)
         .decorations(false)
         .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
@@ -38,6 +40,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .position(hud_x, hud_y)
         .decorations(false)
         .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
@@ -49,25 +52,22 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 }
 
 fn apply_glass(window: &tauri::WebviewWindow) {
-    // Acrylic with very low alpha gives the most see-through glass — it
-    // dynamically blurs whatever's behind in real-time. Mica (a static
-    // desktop sample) is the fallback when Acrylic isn't supported.
-    let e_acrylic = apply_acrylic(window, Some((0, 0, 0, 50))).err();
-    let e_mica = if e_acrylic.is_some() {
-        apply_mica(window, None).err()
-    } else {
-        None
-    };
-    let e_blur = if e_acrylic.is_some() && e_mica.is_some() {
-        apply_blur(window, Some((0, 0, 0, 50))).err()
-    } else {
-        None
-    };
-    if e_acrylic.is_some() && e_mica.is_some() && e_blur.is_some() {
-        tracing::warn!(?e_acrylic, ?e_mica, ?e_blur, "no glass effect available");
+    let Ok(hwnd) = window.hwnd() else { return; };
+    let h = hwnd.0 as isize;
+
+    // Modern Win11 path: set DWMWA_SYSTEMBACKDROP_TYPE = TRANSIENTWINDOW (3).
+    // This is the OFFICIAL Win11 Acrylic — dynamically blurs windows behind
+    // the bar in real time. No frame extension needed; that only adds a
+    // visible title-bar on borderless windows.
+    let modern_ok = dwm::set_backdrop(h, dwm::BACKDROP_ACRYLIC);
+    if !modern_ok {
+        let mica_ok = dwm::set_backdrop(h, dwm::BACKDROP_MICA);
+        if !mica_ok {
+            let _ = apply_acrylic(window, Some((0, 0, 0, 50)))
+                .or_else(|_| apply_mica(window, None))
+                .or_else(|_| apply_blur(window, Some((0, 0, 0, 50))));
+        }
     }
 
-    if let Ok(hwnd) = window.hwnd() {
-        dwm::round_corners(hwnd.0 as isize);
-    }
+    dwm::round_corners(h);
 }
