@@ -39,6 +39,8 @@ base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 sysinfo = { version = "0.32", default-features = false, features = ["network"] }
 winreg = "0.52"
+webview2-com = "0.38"
+windows-core = "0.61"
 
 [dev-dependencies]
 tempfile = "3"

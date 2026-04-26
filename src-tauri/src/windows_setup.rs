@@ -5,6 +5,23 @@ use anyhow::Result;
 
 use crate::dwm;
 
+fn force_webview_transparent(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|wv| {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2Controller2, COREWEBVIEW2_COLOR,
+        };
+        use windows_core::Interface;
+        unsafe {
+            let controller = wv.controller();
+            if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+                let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                    R: 0, G: 0, B: 0, A: 0,
+                });
+            }
+        }
+    });
+}
+
 pub fn create_windows(app: &mut App) -> Result<()> {
     let primary = app.primary_monitor()?
         .ok_or_else(|| anyhow::anyhow!("no primary monitor"))?;
@@ -27,6 +44,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .resizable(false)
         .shadow(false)
         .build()?;
+    force_webview_transparent(&dock);
     apply_glass(&dock);
 
     let hud_w = 280.0;
@@ -46,6 +64,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .resizable(false)
         .shadow(false)
         .build()?;
+    force_webview_transparent(&hud);
     apply_glass(&hud);
 
     Ok(())
@@ -55,19 +74,17 @@ fn apply_glass(window: &tauri::WebviewWindow) {
     let Ok(hwnd) = window.hwnd() else { return; };
     let h = hwnd.0 as isize;
 
-    // Modern Win11 path: set DWMWA_SYSTEMBACKDROP_TYPE = TRANSIENTWINDOW (3).
-    // This is the OFFICIAL Win11 Acrylic — dynamically blurs windows behind
-    // the bar in real time. No frame extension needed; that only adds a
-    // visible title-bar on borderless windows.
+    // Try Win11's modern backdrop first.
     let modern_ok = dwm::set_backdrop(h, dwm::BACKDROP_ACRYLIC);
     if !modern_ok {
-        let mica_ok = dwm::set_backdrop(h, dwm::BACKDROP_MICA);
-        if !mica_ok {
-            let _ = apply_acrylic(window, Some((0, 0, 0, 50)))
-                .or_else(|_| apply_mica(window, None))
-                .or_else(|_| apply_blur(window, Some((0, 0, 0, 50))));
-        }
+        let _ = dwm::set_backdrop(h, dwm::BACKDROP_MICA);
     }
+
+    // Layered window with uniform alpha — guarantees see-through glass even
+    // on builds where Tauri's transparent flag doesn't give the window
+    // per-pixel-alpha capability. Alpha 240 ≈ 94% opaque keeps icons and
+    // text readable while still reading as a glassy panel.
+    dwm::make_layered_with_alpha(h, 240);
 
     dwm::round_corners(h);
 }

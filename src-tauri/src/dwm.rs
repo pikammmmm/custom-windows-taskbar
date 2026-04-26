@@ -1,9 +1,13 @@
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{
     DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
 };
 use windows::Win32::UI::Controls::MARGINS;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW,
+    GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
+};
 
 pub const BACKDROP_AUTO: i32 = 0;
 pub const BACKDROP_NONE: i32 = 1;
@@ -35,6 +39,19 @@ pub fn extend_frame_into_client(hwnd: isize) {
     };
     unsafe {
         let _ = DwmExtendFrameIntoClientArea(HWND(hwnd as *mut _), &margins);
+    }
+}
+
+/// Add WS_EX_LAYERED and apply uniform alpha to the whole window. Used as
+/// a last-resort glass effect when Tauri's transparent(true) doesn't make
+/// the host window per-pixel-alpha capable. The whole window — including
+/// content — will be alpha-blended with whatever's behind it on screen.
+pub fn make_layered_with_alpha(hwnd: isize, alpha: u8) {
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        let style = GetWindowLongPtrW(h, GWL_EXSTYLE);
+        SetWindowLongPtrW(h, GWL_EXSTYLE, style | WS_EX_LAYERED.0 as isize);
+        let _ = SetLayeredWindowAttributes(h, COLORREF(0), alpha, LWA_ALPHA);
     }
 }
 
