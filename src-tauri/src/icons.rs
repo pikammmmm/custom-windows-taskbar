@@ -1,15 +1,19 @@
 use anyhow::{anyhow, Result};
 use sha2::{Digest, Sha256};
+use std::cell::Cell;
 use std::path::PathBuf;
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Graphics::Gdi::{
-    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
-};
 use std::sync::OnceLock;
+use windows::core::{Interface, PCWSTR};
+use windows::Win32::Foundation::{HANDLE, SIZE};
+use windows::Win32::Graphics::Gdi::{
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC,
+    SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
+};
+use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::Shell::{
-    ExtractIconExW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+    ExtractIconExW, IShellItem, IShellItemImageFactory, SHCreateItemFromParsingName,
+    SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+    SIIGBF_BIGGERSIZEOK, SIIGBF_RESIZETOFIT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL, HICON};
 
@@ -44,20 +48,19 @@ fn cache_path_for(exe_path: &str) -> Result<PathBuf> {
 }
 
 fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
+    // Best path: IShellItemImageFactory. Same API File Explorer uses; handles
+    // UWP package manifests, MSIX, traditional exes, and shell-shortcut
+    // chains uniformly. Falls back through ExtractIconExW (PE resources) and
+    // SHGetFileInfo (shell associations) for the rare cases this fails.
+    if let Ok(png) = extract_via_shell_factory(exe_path) {
+        if !looks_generic(&png) { return Ok(png); }
+    }
+
     let wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
 
-    // ExtractIconExW pulls the actual icon resource from the exe's binary,
-    // bypassing shell file-type associations that often return the generic
-    // Windows app icon for unfamiliar executables.
     let mut large = HICON(std::ptr::null_mut());
     let count = unsafe {
-        ExtractIconExW(
-            PCWSTR(wide.as_ptr()),
-            0,
-            Some(&mut large),
-            None,
-            1,
-        )
+        ExtractIconExW(PCWSTR(wide.as_ptr()), 0, Some(&mut large), None, 1)
     };
     if count > 0 && !large.0.is_null() {
         let png = hicon_to_png(large, ICON_SIZE);
@@ -67,7 +70,6 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
         }
     }
 
-    // Fallback to SHGetFileInfo for paths ExtractIconExW couldn't handle.
     let mut info = SHFILEINFOW::default();
     let result = unsafe {
         SHGetFileInfoW(
@@ -88,6 +90,78 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
         return Err(anyhow!("only generic icon available for {exe_path}"));
     }
     Ok(data)
+}
+
+fn ensure_com() {
+    thread_local! { static INITED: Cell<bool> = const { Cell::new(false) }; }
+    INITED.with(|i| {
+        if !i.get() {
+            unsafe { let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED); }
+            i.set(true);
+        }
+    });
+}
+
+fn extract_via_shell_factory(exe_path: &str) -> Result<Vec<u8>> {
+    ensure_com();
+    let wide: Vec<u16> = exe_path.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)?;
+        let factory: IShellItemImageFactory = item.cast()?;
+        let size = SIZE { cx: ICON_SIZE as i32, cy: ICON_SIZE as i32 };
+        let hbitmap = factory.GetImage(size, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK)?;
+        let png = hbitmap_to_png(hbitmap, ICON_SIZE, ICON_SIZE);
+        let _ = DeleteObject(HGDIOBJ(hbitmap.0 as *mut _));
+        png
+    }
+}
+
+fn hbitmap_to_png(hbitmap: HBITMAP, w: u32, h: u32) -> Result<Vec<u8>> {
+    unsafe {
+        let hdc = GetDC(None);
+        if hdc.is_invalid() {
+            return Err(anyhow!("GetDC null"));
+        }
+        let mut bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w as i32,
+                biHeight: -(h as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let lines = GetDIBits(
+            hdc,
+            hbitmap,
+            0,
+            h,
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        ReleaseDC(None, hdc);
+        if lines == 0 {
+            return Err(anyhow!("GetDIBits failed"));
+        }
+        for px in buf.chunks_exact_mut(4) { px.swap(0, 2); }
+        let any_alpha = buf.chunks_exact(4).any(|px| px[3] != 0);
+        if !any_alpha {
+            for px in buf.chunks_exact_mut(4) {
+                let lum = px[0] != 0 || px[1] != 0 || px[2] != 0;
+                px[3] = if lum { 255 } else { 0 };
+            }
+        }
+        let img = image::RgbaImage::from_raw(w, h, buf)
+            .ok_or_else(|| anyhow!("from_raw failed"))?;
+        let mut out = Vec::new();
+        img.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)?;
+        Ok(out)
+    }
 }
 
 /// Detect the system's stock "unknown application" PNG by hash. We probe it
