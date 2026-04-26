@@ -49,23 +49,22 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 }
 
 fn apply_glass(window: &tauri::WebviewWindow) {
-    // transparent(true) is required so WebView2 doesn't paint an opaque
-    // background on top of the Mica effect. With it set, Mica blurs the
-    // desktop wallpaper at the window's screen position. Auto theme so
-    // the tint matches the user's light/dark mode preference.
-    let e_mica = apply_mica(window, None).err();
-    let e_acrylic = if e_mica.is_some() {
-        apply_acrylic(window, Some((20, 20, 28, 180))).err()
+    // Acrylic with very low alpha gives the most see-through glass — it
+    // dynamically blurs whatever's behind in real-time. Mica (a static
+    // desktop sample) is the fallback when Acrylic isn't supported.
+    let e_acrylic = apply_acrylic(window, Some((0, 0, 0, 50))).err();
+    let e_mica = if e_acrylic.is_some() {
+        apply_mica(window, None).err()
     } else {
         None
     };
-    let e_blur = if e_mica.is_some() && e_acrylic.is_some() {
-        apply_blur(window, Some((20, 20, 28, 180))).err()
+    let e_blur = if e_acrylic.is_some() && e_mica.is_some() {
+        apply_blur(window, Some((0, 0, 0, 50))).err()
     } else {
         None
     };
-    if e_mica.is_some() && e_acrylic.is_some() && e_blur.is_some() {
-        tracing::warn!(?e_mica, ?e_acrylic, ?e_blur, "no glass effect available");
+    if e_acrylic.is_some() && e_mica.is_some() && e_blur.is_some() {
+        tracing::warn!(?e_acrylic, ?e_mica, ?e_blur, "no glass effect available");
     }
 
     if let Ok(hwnd) = window.hwnd() {

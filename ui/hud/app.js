@@ -64,10 +64,24 @@ function render() {
   }
 }
 
+const SYSTEM_EXES = new Set([
+  'applicationframehost', 'sihost', 'startmenuexperiencehost',
+  'searchhost', 'shellexperiencehost', 'textinputhost', 'systemsettings',
+  'lockapp', 'usercpl', 'fontdrvhost', 'dwm', 'csrss', 'wininit',
+  'services', 'lsass', 'svchost', 'taskhostw', 'runtimebroker',
+  'ctfmon', 'conhost', 'dllhost', 'wmiprvse',
+]);
+
+function isSystemApp(app) {
+  const name = nameOf(app).toLowerCase();
+  return SYSTEM_EXES.has(name);
+}
+
 function renderApps() {
-  el.appsLabel.textContent = `Apps (${runningApps.length})`;
+  const visible = runningApps.filter(a => !isSystemApp(a));
+  el.appsLabel.textContent = `Apps (${visible.length})`;
   el.appsList.innerHTML = '';
-  const sorted = [...runningApps].sort((x, y) =>
+  const sorted = [...visible].sort((x, y) =>
     nameOf(x).localeCompare(nameOf(y), undefined, { sensitivity: 'base' })
   );
   for (const app of sorted) {

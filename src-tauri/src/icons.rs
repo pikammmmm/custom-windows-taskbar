@@ -7,7 +7,10 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
     BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
 };
-use windows::Win32::UI::Shell::{ExtractIconExW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+use std::sync::OnceLock;
+use windows::Win32::UI::Shell::{
+    ExtractIconExW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL, HICON};
 
 use crate::config;
@@ -87,11 +90,47 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
     Ok(data)
 }
 
-/// The Windows stock "unknown application" icon compresses to ~846 bytes at
-/// 32x32. Anything below ~1 KB is almost certainly a stock placeholder, so we
-/// reject it and let the frontend render its letter fallback instead.
+/// Detect the system's stock "unknown application" PNG by hash. We probe it
+/// once at first call by asking SHGetFileInfo for the icon of an exe path
+/// that intentionally doesn't exist (with SHGFI_USEFILEATTRIBUTES so the
+/// shell returns its placeholder instead of failing). Any extracted icon
+/// matching that exact hash is the generic placeholder, regardless of size.
 fn looks_generic(png: &[u8]) -> bool {
-    png.len() < 1024
+    let probe = generic_icon_hash();
+    let zero = [0u8; 32];
+    *probe != zero && sha_of(png) == *probe
+}
+
+fn sha_of(data: &[u8]) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(data);
+    h.finalize().into()
+}
+
+fn generic_icon_hash() -> &'static [u8; 32] {
+    static H: OnceLock<[u8; 32]> = OnceLock::new();
+    H.get_or_init(|| probe_generic_icon().map(|p| sha_of(&p)).unwrap_or([0u8; 32]))
+}
+
+fn probe_generic_icon() -> Option<Vec<u8>> {
+    let probe = "C:\\__glassbar_probe_does_not_exist__.exe";
+    let wide: Vec<u16> = probe.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut info = SHFILEINFOW::default();
+    let result = unsafe {
+        SHGetFileInfoW(
+            PCWSTR(wide.as_ptr()),
+            windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES(0x80), // FILE_ATTRIBUTE_NORMAL
+            Some(&mut info),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
+        )
+    };
+    if result == 0 || info.hIcon.0.is_null() {
+        return None;
+    }
+    let png = hicon_to_png(info.hIcon, ICON_SIZE).ok();
+    unsafe { let _ = DestroyIcon(info.hIcon); }
+    png
 }
 
 /// Renders an HICON onto a fresh 32bpp DIB section via DrawIconEx, then reads
