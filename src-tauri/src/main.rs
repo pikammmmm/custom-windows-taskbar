@@ -17,6 +17,7 @@ mod dwm;
 mod import_pinned;
 mod shell_taskbar;
 mod dock_autohide;
+mod keyhook;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -96,6 +97,10 @@ fn main() {
 
             // Auto-hide dock + keep dock/HUD pinned above fullscreen apps.
             dock_autohide::spawn(app.handle().clone());
+
+            // Low-level keyboard hook so Win-key tap toggles the dock
+            // (chord support preserved — Win+R, Win+E, etc still work).
+            keyhook::spawn();
 
             // Re-strip decorations after Tauri's late init has settled — on
             // some Win11 builds the framework re-applies WS_CAPTION between

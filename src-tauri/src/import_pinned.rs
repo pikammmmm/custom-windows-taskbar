@@ -1,9 +1,10 @@
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 
+use std::cell::Cell;
 use windows::core::{Interface, PCWSTR};
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile,
+    CoCreateInstance, CoInitializeEx, IPersistFile,
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ,
 };
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
@@ -20,11 +21,10 @@ pub fn read_taskbar_pins() -> Result<Vec<PinnedApp>> {
         return Ok(vec![]);
     }
 
-    // COM init for this thread; release on drop.
-    unsafe {
-        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-    }
-    let _guard = ComGuard;
+    // COM init for this thread. We deliberately do NOT uninit on exit:
+    // icons::warm_cache_from caches an "is COM inited" flag in thread_local,
+    // and uninitializing here would invalidate that without it knowing.
+    ensure_com();
 
     let mut out = Vec::new();
     for entry in std::fs::read_dir(&dir)? {
@@ -33,24 +33,28 @@ pub fn read_taskbar_pins() -> Result<Vec<PinnedApp>> {
         if p.extension().and_then(|e| e.to_str()).map(|s| s.eq_ignore_ascii_case("lnk")) != Some(true) {
             continue;
         }
-        match resolve_lnk(&p) {
-            Ok(target) if Path::new(&target).is_file() => {
-                let display = p.file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string();
-                // Pre-warm the icon cache from the .lnk itself: it carries the
-                // exact icon Windows displays on the taskbar (including any
-                // custom IconLocation), which is closer to what users expect
-                // than whatever the resolved exe happens to ship.
-                if let Some(lnk_str) = p.to_str() {
-                    icons::warm_cache_from(&target, lnk_str);
-                }
-                out.push(PinnedApp { path: target, display_name: display, icon_path: None });
-            }
-            Ok(_) => continue,
-            Err(e) => tracing::warn!("skip lnk {}: {e}", p.display()),
+        let display = p.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let target = match resolve_lnk(&p) {
+            Ok(t) if Path::new(&t).is_file() => t,
+            // Some pins (File Explorer, This PC, Recycle Bin) are shell-folder
+            // shortcuts whose target is a CLSID PIDL, not a file path. We
+            // can't `is_file()` those, so fall back to a small known-shell map
+            // by display name.
+            _ => match shell_target_for(&display) {
+                Some(t) => t,
+                None => continue,
+            },
+        };
+        if let Some(lnk_str) = p.to_str() {
+            // Pre-warm the icon cache from the .lnk itself — it carries the
+            // exact icon Windows draws on the taskbar (custom IconLocation
+            // included), which beats whatever the resolved exe ships.
+            icons::warm_cache_from(&target, lnk_str);
         }
+        out.push(PinnedApp { path: target, display_name: display, icon_path: None });
     }
     Ok(out)
 }
@@ -63,6 +67,15 @@ fn quick_launch_taskbar_dir() -> Option<PathBuf> {
         .join("Quick Launch")
         .join("User Pinned")
         .join("TaskBar"))
+}
+
+/// Map a known shell-folder shortcut display name to a launchable exe path.
+fn shell_target_for(display_name: &str) -> Option<String> {
+    let windir = std::env::var("WINDIR").unwrap_or_else(|_| r"C:\Windows".into());
+    match display_name.to_lowercase().as_str() {
+        "file explorer" | "explorer" | "this pc" => Some(format!(r"{windir}\explorer.exe")),
+        _ => None,
+    }
 }
 
 fn resolve_lnk(lnk: &Path) -> Result<String> {
@@ -85,9 +98,12 @@ fn resolve_lnk(lnk: &Path) -> Result<String> {
     }
 }
 
-struct ComGuard;
-impl Drop for ComGuard {
-    fn drop(&mut self) {
-        unsafe { CoUninitialize() };
-    }
+fn ensure_com() {
+    thread_local! { static INITED: Cell<bool> = const { Cell::new(false) }; }
+    INITED.with(|i| {
+        if !i.get() {
+            unsafe { let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED); }
+            i.set(true);
+        }
+    });
 }

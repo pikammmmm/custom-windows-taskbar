@@ -3,7 +3,7 @@ use tauri::{AppHandle, Manager, PhysicalPosition};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
-use crate::dwm;
+use crate::{dwm, keyhook};
 
 const POLL_MS: u64 = 16;          // ~60 Hz so position interpolation looks smooth
 const HIDE_AFTER_MS: u128 = 1500;
@@ -74,6 +74,18 @@ fn run(app: AppHandle) {
         } else if visible && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
             visible = false;
             start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
+        }
+
+        // Win-key tap toggles visibility regardless of cursor position.
+        if keyhook::take_toggle_request() {
+            if visible {
+                visible = false;
+                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
+            } else {
+                visible = true;
+                last_in_zone = Instant::now(); // give the user time to interact
+                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
+            }
         }
 
         // Drive the slide animation if one is in progress.

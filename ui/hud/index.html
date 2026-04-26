@@ -4,53 +4,55 @@
 <link rel="stylesheet" href="style.css"></head>
 <body>
   <div class="glass-card hud" id="hud">
-    <div class="row clock-row">
-      <div class="time" id="time">--:--</div>
-      <div class="date" id="date">--</div>
-    </div>
-
-    <div class="sep"></div>
-
-    <div class="row net-row">
-      <div class="net-status" id="net-status">
-        <span class="status-dot" id="net-dot"></span>
-        <span class="status-text" id="net-text">Checking…</span>
-        <span class="status-ping" id="net-ping"></span>
+    <div class="hud-scroll">
+      <div class="row clock-row">
+        <div class="time" id="time">--:--</div>
+        <div class="date" id="date">--</div>
       </div>
-      <div class="net-rates">
-        <div class="net-line">
-          <span class="arrow down">↓</span>
-          <span class="rate" id="down">0 KB/s</span>
+
+      <div class="sep"></div>
+
+      <div class="row net-row">
+        <div class="net-status" id="net-status">
+          <span class="status-dot" id="net-dot"></span>
+          <span class="status-text" id="net-text">Checking…</span>
+          <span class="status-ping" id="net-ping"></span>
         </div>
-        <div class="net-line">
-          <span class="arrow up">↑</span>
-          <span class="rate" id="up">0 KB/s</span>
+        <div class="net-rates">
+          <div class="net-line">
+            <span class="arrow down">↓</span>
+            <span class="rate" id="down">0 KB/s</span>
+          </div>
+          <div class="net-line">
+            <span class="arrow up">↑</span>
+            <span class="rate" id="up">0 KB/s</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="sep"></div>
+      <div class="sep"></div>
 
-    <div class="row audio-row">
-      <div class="audio-line">
-        <button class="vol-icon" id="vol-icon" title="Mute / unmute">🔊</button>
-        <input type="range" id="vol-slider" min="0" max="100" value="50">
-        <span class="vol-pct" id="vol-pct">--%</span>
+      <div class="row audio-row">
+        <div class="audio-line">
+          <button class="vol-icon" id="vol-icon" title="Mute / unmute">🔊</button>
+          <input type="range" id="vol-slider" min="0" max="100" value="50">
+          <span class="vol-pct" id="vol-pct">--%</span>
+        </div>
       </div>
-    </div>
 
-    <div class="sep"></div>
+      <div class="sep"></div>
 
-    <div class="row media-row" id="media-row">
-      <div class="title" id="media-title">Nothing playing</div>
-      <div class="artist" id="media-artist"></div>
-    </div>
+      <div class="row media-row" id="media-row">
+        <div class="title" id="media-title">Nothing playing</div>
+        <div class="artist" id="media-artist"></div>
+      </div>
 
-    <div class="sep"></div>
+      <div class="sep"></div>
 
-    <div class="row apps-row">
-      <div class="section-label" id="apps-label">Apps</div>
-      <div class="apps-list" id="apps-list"></div>
+      <div class="row apps-row">
+        <div class="section-label" id="apps-label">Apps</div>
+        <div class="apps-list" id="apps-list"></div>
+      </div>
     </div>
 
     <div class="drag-handle" id="drag"></div>
