@@ -14,7 +14,20 @@ const el = {
   volIcon: document.getElementById('vol-icon'),
   appsList: document.getElementById('apps-list'),
   appsLabel: document.getElementById('apps-label'),
+  netDot: document.getElementById('net-dot'),
+  netText: document.getElementById('net-text'),
+  netPing: document.getElementById('net-ping'),
+  toast: document.getElementById('toast'),
 };
+
+let prevOnline = null;
+let toastTimer = null;
+function showToast(text, kind) {
+  el.toast.textContent = text;
+  el.toast.className = `toast show ${kind || ''}`;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.toast.className = 'toast'; }, 3500);
+}
 
 let lastSnapshot = null;
 let runningApps = [];
@@ -40,6 +53,19 @@ function render() {
   if (lastSnapshot) {
     el.down.textContent = fmtRate(lastSnapshot.network.down_bps);
     el.up.textContent = fmtRate(lastSnapshot.network.up_bps);
+
+    const inet = lastSnapshot.internet;
+    if (inet) {
+      el.netDot.className = 'status-dot ' + (inet.online ? 'on' : 'off');
+      el.netText.textContent = inet.online ? 'Online' : 'Offline';
+      el.netPing.textContent = inet.online && inet.ping_ms != null
+        ? `· ${inet.ping_ms} ms`
+        : '';
+      if (prevOnline !== null && prevOnline !== inet.online) {
+        showToast(inet.online ? 'Internet reconnected' : 'Internet disconnected', inet.online ? 'good' : 'bad');
+      }
+      prevOnline = inet.online;
+    }
 
     const m = lastSnapshot.media;
     if (m.has_session && m.title) {
@@ -79,7 +105,7 @@ function isSystemApp(app) {
 
 function renderApps() {
   const visible = runningApps.filter(a => !isSystemApp(a));
-  el.appsLabel.textContent = `Apps (${visible.length})`;
+  el.appsLabel.textContent = `Background apps (${visible.length})`;
   el.appsList.innerHTML = '';
   const sorted = [...visible].sort((x, y) =>
     nameOf(x).localeCompare(nameOf(y), undefined, { sensitivity: 'base' })
@@ -93,8 +119,18 @@ function renderApps() {
     const countSpan = document.createElement('span');
     countSpan.className = 'count';
     countSpan.textContent = app.windows.length > 1 ? `×${app.windows.length}` : '';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'app-close';
+    closeBtn.title = `Close ${nameOf(app)}`;
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const hwnds = app.windows.map(w => w.hwnd);
+      invoke('close_hwnds', { hwnds }).catch(() => {});
+    });
     item.appendChild(nameSpan);
     item.appendChild(countSpan);
+    item.appendChild(closeBtn);
     item.addEventListener('click', () => {
       if (app.windows.length > 0) {
         invoke('focus_window', { hwnd: app.windows[0].hwnd });

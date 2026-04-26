@@ -83,7 +83,7 @@ fn apply_glass(window: &tauri::WebviewWindow) {
     // Layered window with uniform alpha — guarantees see-through glass even
     // on builds where Tauri's transparent flag doesn't give the window
     // per-pixel-alpha capability.
-    dwm::make_layered_with_alpha(h, 190);
+    dwm::make_layered_with_alpha(h, 160);
     dwm::make_noactivate(h);
     dwm::round_corners(h);
 }

@@ -2,11 +2,11 @@
   --glass-fg: rgba(255, 255, 255, 0.95);
   --glass-fg-dim: rgba(255, 255, 255, 0.55);
   --glass-radius: 22px;
-  --glass-bg: rgba(12, 14, 20, 0.28);
-  --glass-bg-top: rgba(28, 32, 44, 0.36);
-  --glass-bg-bot: rgba(8, 10, 14, 0.30);
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-border-top: rgba(255, 255, 255, 0.24);
+  --glass-bg: rgba(12, 14, 20, 0.18);
+  --glass-bg-top: rgba(28, 32, 44, 0.22);
+  --glass-bg-bot: rgba(8, 10, 14, 0.18);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-border-top: rgba(255, 255, 255, 0.28);
 }
 
 html, body {

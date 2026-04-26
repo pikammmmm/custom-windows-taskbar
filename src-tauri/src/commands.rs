@@ -2,7 +2,7 @@ use crate::{win32, pinned, icons, config, autostart, shell_taskbar};
 use crate::widgets::audio;
 use std::process::Command;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
 pub fn launch(path: String) -> Result<(), String> {
@@ -122,4 +122,27 @@ pub fn hide_windows_taskbar() -> Result<usize, String> {
 #[tauri::command]
 pub fn show_windows_taskbar() -> Result<usize, String> {
     shell_taskbar::show_windows_taskbar().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
+    let win = app.get_webview_window("hud")
+        .ok_or_else(|| "hud window missing".to_string())?;
+    let visible = win.is_visible().map_err(|e| e.to_string())?;
+    if visible {
+        win.hide().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        win.show().map_err(|e| e.to_string())?;
+        win.set_always_on_top(true).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub fn close_hwnds(hwnds: Vec<isize>) -> Result<(), String> {
+    for h in hwnds {
+        let _ = win32::close(h);
+    }
+    Ok(())
 }

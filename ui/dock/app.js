@@ -75,6 +75,11 @@ async function render() {
       running: a,
     }));
   }
+
+  const trailSep = document.createElement('div');
+  trailSep.className = 'dock-divider';
+  root.appendChild(trailSep);
+  root.appendChild(makeHudToggleButton());
 }
 
 async function iconNode({ exe, label, running }) {
@@ -125,6 +130,25 @@ function makeStartButton() {
   node.addEventListener('click', (e) => {
     e.stopPropagation();
     invoke('open_start_menu').catch(() => {});
+  });
+  return node;
+}
+
+function makeHudToggleButton() {
+  const node = document.createElement('div');
+  node.className = 'dock-icon hud-toggle';
+  node.innerHTML = `
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <rect x="3" y="3" width="8" height="8" rx="1.5" fill="none" stroke="#cfd6e4" stroke-width="1.6"/>
+      <rect x="13" y="3" width="8" height="5" rx="1.5" fill="#cfd6e4"/>
+      <rect x="13" y="10" width="8" height="11" rx="1.5" fill="none" stroke="#cfd6e4" stroke-width="1.6"/>
+      <rect x="3" y="13" width="8" height="8" rx="1.5" fill="#cfd6e4"/>
+    </svg>
+    <div class="tooltip">Toggle widget panel</div>
+  `;
+  node.addEventListener('click', (e) => {
+    e.stopPropagation();
+    invoke('toggle_hud').catch(() => {});
   });
   return node;
 }

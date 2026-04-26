@@ -39,16 +39,64 @@
   margin-top: 2px;
 }
 
-.net-row { gap: 4px; }
-.net-line {
+.net-row { gap: 6px; }
+.net-status {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--glass-fg-dim);
+  box-shadow: 0 0 6px rgba(255,255,255,0.15);
+}
+.status-dot.on { background: #58e07b; box-shadow: 0 0 8px rgba(88,224,123,0.6); }
+.status-dot.off { background: #ff6b6b; box-shadow: 0 0 8px rgba(255,107,107,0.55); }
+.status-text { font-weight: 500; }
+.status-ping {
+  color: var(--glass-fg-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.net-rates {
+  display: flex;
+  gap: 12px;
+  padding-left: 14px;
+}
+.net-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--glass-fg-dim);
   font-variant-numeric: tabular-nums;
 }
 .arrow { color: #7ad; font-weight: bold; }
 .arrow.up { color: #fa7; }
+
+.toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(20, 24, 34, 0.85);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(20px);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 180ms ease, transform 180ms ease;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.good { border-color: rgba(88,224,123,0.45); }
+.toast.bad  { border-color: rgba(255,107,107,0.5); }
 
 .audio-line {
   display: flex;
@@ -143,6 +191,20 @@
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.apps-item .app-close {
+  background: transparent;
+  border: none;
+  color: var(--glass-fg-dim);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;
+}
+.apps-item:hover .app-close { opacity: 1; }
+.apps-item .app-close:hover { color: #ff7676; background: rgba(255, 80, 80, 0.18); }
 
 .drag-handle {
   position: absolute;

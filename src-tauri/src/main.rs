@@ -42,6 +42,8 @@ fn main() {
             commands::open_start_menu,
             commands::hide_windows_taskbar,
             commands::show_windows_taskbar,
+            commands::toggle_hud,
+            commands::close_hwnds,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
