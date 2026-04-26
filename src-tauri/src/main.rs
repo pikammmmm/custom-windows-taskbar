@@ -20,7 +20,34 @@ mod dock_autohide;
 mod keyhook;
 mod app_actions;
 
+/// Bail out immediately if another glassbar.exe is already running. Uses a
+/// named kernel mutex so the lock is reliable across processes (cargo
+/// builds + autostart + manual relaunch can otherwise pile up instances).
+/// Returns false if we should exit without starting.
+fn acquire_singleton() -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::System::Threading::CreateMutexW;
+    let name: Vec<u16> = "Local\\glassbar-singleton-7c3e".encode_utf16()
+        .chain(std::iter::once(0)).collect();
+    unsafe {
+        let handle = CreateMutexW(None, false, PCWSTR(name.as_ptr()));
+        // Intentionally leak the handle — we want the OS to release it on
+        // process exit so a second instance can take over after a crash.
+        if handle.is_err() { return true; } // can't tell either way; allow start
+        let already = GetLastError() == ERROR_ALREADY_EXISTS;
+        std::mem::forget(handle);
+        !already
+    }
+}
+
 fn main() {
+    if !acquire_singleton() {
+        // Another instance is already running — exit silently without trying
+        // to start the Tauri runtime or its windows.
+        return;
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
