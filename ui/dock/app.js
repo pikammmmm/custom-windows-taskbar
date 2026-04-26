@@ -29,10 +29,23 @@ function pinnedExePaths() {
   return new Set(pinned.map(p => p.path.toLowerCase()));
 }
 
+const SYSTEM_EXES = new Set([
+  'applicationframehost', 'sihost', 'startmenuexperiencehost',
+  'searchhost', 'shellexperiencehost', 'textinputhost', 'systemsettings',
+  'lockapp', 'usercpl', 'fontdrvhost', 'dwm', 'csrss', 'wininit',
+  'services', 'lsass', 'svchost', 'taskhostw', 'runtimebroker',
+  'ctfmon', 'conhost', 'dllhost', 'wmiprvse', 'explorer',
+]);
+function isSystemExe(exe) {
+  const name = exe.split('\\').pop().replace(/\.exe$/i, '').toLowerCase();
+  return SYSTEM_EXES.has(name);
+}
+
 async function render() {
   const pinSet = pinnedExePaths();
-  const runByExe = new Map(running.map(a => [a.exe_path.toLowerCase(), a]));
-  const pinnedExtras = running.filter(a => !pinSet.has(a.exe_path.toLowerCase()));
+  const visibleRunning = running.filter(a => !isSystemExe(a.exe_path));
+  const runByExe = new Map(visibleRunning.map(a => [a.exe_path.toLowerCase(), a]));
+  const pinnedExtras = visibleRunning.filter(a => !pinSet.has(a.exe_path.toLowerCase()));
 
   root.innerHTML = '';
 
