@@ -14,48 +14,42 @@ function renderItems(items) {
 }
 
 // Fast path: the dock-side `show_menu` emits this just before showing the
-// window. Once the listener is registered (steady state), this is the only
-// path that needs to fire.
-listen('menu:items', (e) => renderItems(e.payload));
+// window. Works once the listener is registered (steady state).
+listen('menu:items', (e) => maybeRender(e.payload));
 
-// Reliable path: pull from Rust's stashed last_menu_items. Used both on
-// focus and as a polling safety-net while the menu is visible-but-empty —
-// the listener-registration race on first right-click can otherwise leave
-// the menu blank indefinitely.
-let pollHandle = null;
+// Reliable path: an unconditional 250ms poll of Rust's stashed
+// last_menu_items. On first right-click of a session the listener race
+// AND the focused=true event can both miss; on later right-clicks the
+// items array changes and we need to detect it. Polling all the time is
+// the only thing that's reliably caught both. The cost is one tiny IPC
+// call every 250ms (a JSON pull); we only re-render when the payload
+// actually differs from the one currently on screen.
+let lastSig = '';
+function sigOf(items) {
+  // Cheap structural fingerprint — array length + per-item kind/label is
+  // enough to spot any new menu invocation without diffing icons/etc.
+  if (!Array.isArray(items)) return '';
+  return items.map(i => `${i.kind}|${i.label || i.name || ''}`).join('§');
+}
+function maybeRender(items) {
+  const sig = sigOf(items);
+  if (sig === lastSig) return;
+  lastSig = sig;
+  renderItems(items);
+}
 async function pullItems() {
   try {
     const items = await invoke('get_menu_items');
-    if (Array.isArray(items) && items.length > 0) {
-      renderItems(items);
-      stopPolling();
-    }
+    maybeRender(items);
   } catch {}
 }
-function startPolling() {
-  if (pollHandle != null) return;
-  pollHandle = setInterval(pullItems, 200);
-}
-function stopPolling() {
-  if (pollHandle != null) { clearInterval(pollHandle); pollHandle = null; }
-}
+setInterval(pullItems, 250);
+pullItems();
 
 const win = getCurrentWindow();
 win.onFocusChanged(({ payload: focused }) => {
-  if (focused) {
-    // Re-render every show, in case the items array changed since last time.
-    itemsRoot.innerHTML = '';
-    pullItems();
-    startPolling();
-  } else {
-    stopPolling();
-    invoke('hide_menu').catch(() => {});
-  }
+  if (!focused) invoke('hide_menu').catch(() => {});
 });
-
-// Cold-start nudge: if the focus event doesn't fire on the first show
-// (focus quirks on always-on-top windows), the poll picks it up anyway.
-pullItems();
 
 function renderItem(item) {
   if (item.kind === 'separator') {
