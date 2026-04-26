@@ -33,7 +33,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     let dock_w = 760.0;
     let dock_h = 64.0;
     let dock = WebviewWindowBuilder::new(app, "dock", WebviewUrl::App("dock/index.html".into()))
-        .title("glassbar-dock")
+        .title("")
         .inner_size(dock_w, dock_h)
         .position((screen_w - dock_w) / 2.0, screen_h - dock_h - 12.0)
         .decorations(false)
@@ -54,7 +54,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     let (hud_x, hud_y) = settings.hud_position
         .unwrap_or((screen_w - hud_w - 12.0, 12.0));
     let hud = WebviewWindowBuilder::new(app, "hud", WebviewUrl::App("hud/index.html".into()))
-        .title("glassbar-hud")
+        .title("")
         .inner_size(hud_w, hud_h)
         .position(hud_x, hud_y)
         .decorations(false)
@@ -94,5 +94,6 @@ fn apply_glass(window: &tauri::WebviewWindow) {
     // per-pixel-alpha capability.
     dwm::make_layered_with_alpha(h, 160);
     dwm::make_noactivate(h);
+    dwm::strip_decorations(h);
     dwm::round_corners(h);
 }

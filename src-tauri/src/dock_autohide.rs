@@ -91,10 +91,18 @@ fn run(app: AppHandle) {
         }
 
         // Periodically re-assert topmost so the dock + HUD stay above
-        // borderless-fullscreen apps and F11'd browsers.
+        // borderless-fullscreen apps and F11'd browsers. Also re-strip
+        // decorations because Tauri/Win11 occasionally re-asserts WS_CAPTION
+        // (especially after first paint or window-show events).
         if topmost_tick.elapsed().as_millis() >= TOPMOST_REASSERT_MS {
-            if dock_hwnd != 0 { dwm::assert_topmost(dock_hwnd); }
-            if hud_hwnd != 0 { dwm::assert_topmost(hud_hwnd); }
+            if dock_hwnd != 0 {
+                dwm::assert_topmost(dock_hwnd);
+                dwm::strip_decorations(dock_hwnd);
+            }
+            if hud_hwnd != 0 {
+                dwm::assert_topmost(hud_hwnd);
+                dwm::strip_decorations(hud_hwnd);
+            }
             topmost_tick = Instant::now();
         }
     }

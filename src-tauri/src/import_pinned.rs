@@ -8,6 +8,7 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
+use crate::icons;
 use crate::pinned::PinnedApp;
 
 /// Read the per-user Windows-taskbar pinned-shortcut folder and resolve each
@@ -38,6 +39,13 @@ pub fn read_taskbar_pins() -> Result<Vec<PinnedApp>> {
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string();
+                // Pre-warm the icon cache from the .lnk itself: it carries the
+                // exact icon Windows displays on the taskbar (including any
+                // custom IconLocation), which is closer to what users expect
+                // than whatever the resolved exe happens to ship.
+                if let Some(lnk_str) = p.to_str() {
+                    icons::warm_cache_from(&target, lnk_str);
+                }
                 out.push(PinnedApp { path: target, display_name: display, icon_path: None });
             }
             Ok(_) => continue,

@@ -96,6 +96,22 @@ fn main() {
 
             // Auto-hide dock + keep dock/HUD pinned above fullscreen apps.
             dock_autohide::spawn(app.handle().clone());
+
+            // Re-strip decorations after Tauri's late init has settled — on
+            // some Win11 builds the framework re-applies WS_CAPTION between
+            // window build and first paint, so stripping once at build time
+            // isn't enough.
+            let app_for_strip = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                for label in ["dock", "hud"] {
+                    if let Some(win) = app_for_strip.get_webview_window(label) {
+                        if let Ok(hwnd) = win.hwnd() {
+                            dwm::strip_decorations(hwnd.0 as isize);
+                        }
+                    }
+                }
+            });
             Ok(())
         })
         .build(tauri::generate_context!())

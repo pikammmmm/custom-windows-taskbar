@@ -7,8 +7,10 @@ use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
-    GWL_EXSTYLE, HWND_TOPMOST, LWA_ALPHA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, LWA_ALPHA, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_BORDER, WS_CAPTION,
+    WS_DLGFRAME, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
+    WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 
 pub const BACKDROP_AUTO: i32 = 0;
@@ -84,6 +86,36 @@ pub fn assert_topmost(hwnd: isize) {
             HWND_TOPMOST,
             0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+/// Strip WS_CAPTION / WS_SYSMENU / WS_MINIMIZEBOX / WS_MAXIMIZEBOX /
+/// WS_THICKFRAME / WS_BORDER from the window's GWL_STYLE. Tauri's
+/// `.decorations(false)` should already do this, but on some Win11 builds the
+/// title bar still gets drawn after we change region/transparency — this is
+/// the belt-and-braces removal of the OS-drawn frame.
+pub fn strip_decorations(hwnd: isize) {
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        let strip: u32 = WS_CAPTION.0
+            | WS_SYSMENU.0
+            | WS_MINIMIZEBOX.0
+            | WS_MAXIMIZEBOX.0
+            | WS_THICKFRAME.0
+            | WS_BORDER.0
+            | WS_DLGFRAME.0;
+        let style = GetWindowLongPtrW(h, GWL_STYLE) as u32;
+        // Add WS_POPUP — without it, a top-level window defaults to WS_OVERLAPPED
+        // which implies a caption no matter what other bits we clear.
+        let new_style = (style & !strip) | WS_POPUP.0;
+        SetWindowLongPtrW(h, GWL_STYLE, new_style as isize);
+        // Tell the OS the non-client area changed so the title bar redraws away.
+        let _ = SetWindowPos(
+            h,
+            HWND_TOP,
+            0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
     }
 }

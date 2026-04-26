@@ -24,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::config;
 
 const ICON_SIZE: u32 = 32;
-const CACHE_VERSION: &str = "v2";
+const CACHE_VERSION: &str = "v3";
 
 pub fn get_icon_png(exe_path: &str, hwnd: Option<isize>) -> Result<Vec<u8>> {
     let cache_path = cache_path_for(exe_path)?;
@@ -43,6 +43,19 @@ pub fn get_icon_data_url(exe_path: &str, hwnd: Option<isize>) -> Result<String> 
         "data:image/png;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(&png)
     ))
+}
+
+/// Pre-populate the icon cache for `exe_path` from a different source path
+/// (typically the original .lnk shortcut). The shell's `IShellItemImageFactory`
+/// applied to a .lnk returns the icon as Windows would draw it on the taskbar
+/// — including any custom `iconLocation` the shortcut sets. Only writes the
+/// cache if the resulting icon isn't the system's stock generic placeholder.
+pub fn warm_cache_from(exe_path: &str, source_path: &str) {
+    let Ok(cache_path) = cache_path_for(exe_path) else { return };
+    if cache_path.exists() { return; }
+    let Ok(png) = extract_via_shell_factory(source_path) else { return };
+    if looks_generic(&png) { return; }
+    let _ = std::fs::write(&cache_path, &png);
 }
 
 fn cache_path_for(exe_path: &str) -> Result<PathBuf> {
