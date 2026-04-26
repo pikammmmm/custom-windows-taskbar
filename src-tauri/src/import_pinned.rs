@@ -12,6 +12,12 @@ use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 use crate::icons;
 use crate::pinned::PinnedApp;
 
+/// Public accessor for the Windows-taskbar pinned-shortcut folder so callers
+/// can `notify::watch` it without duplicating the path logic.
+pub fn taskbar_pin_dir() -> Option<PathBuf> {
+    quick_launch_taskbar_dir()
+}
+
 /// Read the per-user Windows-taskbar pinned-shortcut folder and resolve each
 /// .lnk into a `PinnedApp`. Items whose target no longer exists are skipped.
 pub fn read_taskbar_pins() -> Result<Vec<PinnedApp>> {
