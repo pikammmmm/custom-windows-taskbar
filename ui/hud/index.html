@@ -80,6 +80,20 @@
         <button class="quick-btn" data-uri="ms-settings:"              title="All Settings">⚙</button>
       </section>
 
+      <!-- Settings — collapsible -->
+      <section class="block settings-block">
+        <button class="apps-header" id="settings-toggle" aria-expanded="false">
+          <span>Settings</span>
+          <span class="apps-caret" id="settings-caret">▸</span>
+        </button>
+        <div class="settings-list collapsed" id="settings-list">
+          <label class="settings-row">
+            <input type="checkbox" id="set-autostart">
+            <span>Launch at sign-in</span>
+          </label>
+        </div>
+      </section>
+
       <!-- Background apps — collapsible, defaults open -->
       <section class="block apps-block">
         <button class="apps-header" id="apps-toggle" aria-expanded="true">
