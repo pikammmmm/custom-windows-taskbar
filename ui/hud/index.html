@@ -80,6 +80,20 @@
         <button class="quick-btn" data-uri="ms-settings:"              title="All Settings">⚙</button>
       </section>
 
+      <!-- Files stash — drop files in, drag them back out elsewhere -->
+      <section class="block stash-block" id="stash-block">
+        <button class="apps-header" id="stash-toggle" aria-expanded="true">
+          <span id="stash-label">Files</span>
+          <span class="apps-caret" id="stash-caret">▾</span>
+        </button>
+        <div class="stash-body" id="stash-body">
+          <div class="stash-dropzone" id="stash-dropzone">
+            <span class="stash-hint">Drop files here · drag back out anywhere</span>
+          </div>
+          <div class="stash-list" id="stash-list"></div>
+        </div>
+      </section>
+
       <!-- Settings — collapsible -->
       <section class="block settings-block">
         <button class="apps-header" id="settings-toggle" aria-expanded="false">
