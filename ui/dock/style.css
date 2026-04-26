@@ -1,40 +1,64 @@
 .dock-row {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
   padding: 8px 12px;
   height: 100%;
   box-sizing: border-box;
+  overflow: visible;
 }
 
+/* The center section is the only horizontally-scrolling part. min-width:0
+   is critical inside a flex parent — without it the section refuses to
+   shrink below the intrinsic icon-row width and pushes the tray off-screen. */
+.dock-section { display: flex; align-items: center; gap: 6px; }
+.dock-center {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  padding: 0 4px;
+}
+.dock-center::-webkit-scrollbar { display: none; }
+
+/* ────────────────────────────────────────────────────────────────────────
+   Icon — base + hover magnification + neighbor lift (macOS-ish)
+   ──────────────────────────────────────────────────────────────────────── */
 .dock-icon {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
+  border-radius: 11px;
   background: rgba(255,255,255,0.04);
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   cursor: pointer;
-  transition: background 120ms ease, transform 120ms ease;
+  flex-shrink: 0;
+  transition:
+    transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 140ms ease,
+    box-shadow 200ms ease;
   pointer-events: auto;
 }
 .dock-icon:hover {
-  background: rgba(255,255,255,0.10);
-  transform: translateY(-2px);
+  background: rgba(255,255,255,0.14);
+  transform: translateY(-5px) scale(1.18);
+  z-index: 3;
 }
+/* Neighbors of the hovered icon get a smaller lift. :has lets us reach
+   the left neighbor; the sibling combinator handles the right neighbor.
+   Both supported by current WebView2. */
+.dock-icon:hover + .dock-icon,
+.dock-icon:has(+ .dock-icon:hover) {
+  transform: translateY(-2px) scale(1.07);
+}
+
 .dock-icon img {
   width: 32px;
   height: 32px;
   -webkit-user-drag: none;
-}
-.dock-icon.start-button svg {
-  filter: drop-shadow(0 0 6px rgba(92, 182, 255, 0.6));
-}
-.dock-icon.start-button:hover svg path {
-  fill: #8accff;
 }
 .dock-icon .icon-fallback {
   width: 32px;
@@ -50,34 +74,139 @@
   letter-spacing: -0.5px;
   text-shadow: 0 1px 1px rgba(0,0,0,0.3);
 }
-.dock-icon .dot {
+
+/* Foreground app — subtle blue glow ring */
+.dock-icon.foreground {
+  background: rgba(92, 182, 255, 0.18);
+  box-shadow:
+    0 0 0 1px rgba(92, 182, 255, 0.35) inset,
+    0 0 14px rgba(92, 182, 255, 0.22);
+}
+
+/* Newly-launched app icon plays a one-shot bounce when it first appears */
+.dock-icon.just-launched {
+  animation: dock-launch 620ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes dock-launch {
+  0%   { transform: translateY(10px) scale(0.55); opacity: 0; }
+  60%  { transform: translateY(-7px) scale(1.14); opacity: 1; }
+  100% { transform: translateY(0) scale(1);       opacity: 1; }
+}
+
+/* Newly-pinned icon (no running window) — shorter fade-in */
+.dock-icon.just-added {
+  animation: dock-fadein 260ms ease-out;
+}
+@keyframes dock-fadein {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Window-count indicator: one segment per open window, foreground gets
+   the wide pill + breathing pulse.
+   ──────────────────────────────────────────────────────────────────────── */
+.dock-icon .indicator {
   position: absolute;
   bottom: 3px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  pointer-events: none;
+}
+.dock-icon .indicator .seg {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #4af;
-  box-shadow: 0 0 6px #4af;
+  background: rgba(140, 180, 230, 0.7);
+  transition: width 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
-.dock-icon .dot.multi {
+.dock-icon.foreground .indicator .seg:first-child {
   width: 14px;
   border-radius: 2px;
+  background: #5cb6ff;
+  box-shadow: 0 0 8px rgba(92, 182, 255, 0.95);
+  animation: indicator-pulse 2.4s ease-in-out infinite;
+}
+@keyframes indicator-pulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; box-shadow: 0 0 12px rgba(92, 182, 255, 1); }
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+   Start button + HUD toggle button — same icon footprint, custom glow
+   ──────────────────────────────────────────────────────────────────────── */
+.dock-icon.start-button svg {
+  filter: drop-shadow(0 0 6px rgba(92, 182, 255, 0.6));
+}
+.dock-icon.start-button:hover svg path {
+  fill: #8accff;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Dividers — soft vertical fade, not hard lines
+   ──────────────────────────────────────────────────────────────────────── */
 .dock-divider {
   width: 1px;
-  height: 36px;
-  background: rgba(255,255,255,0.15);
+  height: 32px;
+  background: linear-gradient(to bottom,
+    transparent,
+    rgba(255,255,255,0.22) 30%,
+    rgba(255,255,255,0.22) 70%,
+    transparent);
   margin: 0 4px;
+  flex-shrink: 0;
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+   Tray chips (right-side widgets) — clock, volume, battery, network
+   ──────────────────────────────────────────────────────────────────────── */
+.tray { display: flex; align-items: center; gap: 4px; }
+.tray-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.05);
+  font-size: 12px;
+  color: #cfd6e4;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 140ms ease, transform 180ms ease;
+  user-select: none;
+}
+.tray-chip:hover {
+  background: rgba(255,255,255,0.14);
+  transform: translateY(-2px);
+}
+.tray-chip .tray-icon { font-size: 13px; line-height: 1; }
+.tray-chip .tray-val {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.tray-chip.clock-chip {
+  font-weight: 700;
+  font-size: 13px;
+  padding: 6px 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.4px;
+}
+.tray-chip.net-chip .tray-icon { color: #6ee7b7; }
+.tray-chip.net-chip.offline .tray-icon { color: #f88; }
+.tray-chip.batt-chip.charging .tray-icon { color: #6ee7b7; }
+.tray-chip.batt-chip.low .tray-icon { color: #f88; }
+
+/* ────────────────────────────────────────────────────────────────────────
+   Tooltip (on icons; tray chips use native title= attribute)
+   ──────────────────────────────────────────────────────────────────────── */
 .tooltip {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 10px);
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, 4px);
   background: rgba(20,20,25,0.95);
   border: 1px solid rgba(255,255,255,0.1);
   padding: 4px 8px;
@@ -86,35 +215,16 @@
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity 140ms ease, transform 180ms ease;
+  z-index: 10;
 }
 .dock-icon:hover .tooltip {
   opacity: 1;
+  transform: translate(-50%, 0);
 }
 
-.menu {
-  position: fixed;
-  background: rgba(20,20,25,0.97);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 8px;
-  padding: 4px;
-  min-width: 180px;
-  z-index: 1000;
-  pointer-events: auto;
-}
-.menu-item {
-  padding: 6px 10px;
-  font-size: 13px;
-  border-radius: 4px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.menu-item:hover { background: rgba(255,255,255,0.10); }
-.menu-sep {
-  height: 1px;
-  background: rgba(255,255,255,0.10);
-  margin: 4px 6px;
-}
+/* ────────────────────────────────────────────────────────────────────────
+   Right-click context-menu styles still consumed by ui/menu/* via
+   shared markup conventions — keep the danger color in sync.
+   ──────────────────────────────────────────────────────────────────────── */
 .menu-item.danger { color: #f88; }

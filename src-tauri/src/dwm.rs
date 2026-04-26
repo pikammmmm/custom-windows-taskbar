@@ -1,7 +1,8 @@
-use windows::Win32::Foundation::{COLORREF, HWND};
+use windows::Win32::Foundation::{BOOL, COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{
-    DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE,
-    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
+    DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMNCRP_DISABLED,
+    DWMWA_NCRENDERING_POLICY, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMNCRENDERINGPOLICY, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
 };
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 use windows::Win32::UI::Controls::MARGINS;
@@ -109,8 +110,13 @@ pub fn strip_decorations(hwnd: isize) {
         // Add WS_POPUP — without it, a top-level window defaults to WS_OVERLAPPED
         // which implies a caption no matter what other bits we clear.
         let new_style = (style & !strip) | WS_POPUP.0;
+        // Bail when nothing changed — SetWindowPos+SWP_FRAMECHANGED triggers a
+        // non-client redraw that flickers the corners, so we only want to pay
+        // that cost when WS_CAPTION has actually crept back in.
+        if new_style == style {
+            return;
+        }
         SetWindowLongPtrW(h, GWL_STYLE, new_style as isize);
-        // Tell the OS the non-client area changed so the title bar redraws away.
         let _ = SetWindowPos(
             h,
             HWND_TOP,
@@ -127,6 +133,31 @@ pub fn make_noactivate(hwnd: isize) {
         let h = HWND(hwnd as *mut _);
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE);
         SetWindowLongPtrW(h, GWL_EXSTYLE, style | WS_EX_NOACTIVATE.0 as isize);
+    }
+}
+
+/// Tell DWM to skip drawing the non-client area entirely. Belt-and-braces
+/// alongside `strip_decorations` — even if WS_CAPTION sneaks back in (Tauri's
+/// internal SetWindowPos calls re-add it on some Win11 builds), DWM won't
+/// render a title bar. Also forces dark-mode caption colors so any momentary
+/// flash before this attribute applies appears dark rather than white.
+pub fn suppress_nc_rendering(hwnd: isize) {
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        let policy = DWMNCRP_DISABLED;
+        let _ = DwmSetWindowAttribute(
+            h,
+            DWMWA_NCRENDERING_POLICY,
+            &policy as *const DWMNCRENDERINGPOLICY as *const _,
+            std::mem::size_of::<DWMNCRENDERINGPOLICY>() as u32,
+        );
+        let dark: BOOL = BOOL(1);
+        let _ = DwmSetWindowAttribute(
+            h,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &dark as *const BOOL as *const _,
+            std::mem::size_of::<BOOL>() as u32,
+        );
     }
 }
 

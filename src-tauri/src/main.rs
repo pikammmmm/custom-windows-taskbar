@@ -18,6 +18,7 @@ mod import_pinned;
 mod shell_taskbar;
 mod dock_autohide;
 mod keyhook;
+mod app_actions;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -27,6 +28,7 @@ fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             commands::launch,
+            commands::launch_uri,
             commands::focus_window,
             commands::minimize_window,
             commands::close_window,
@@ -41,10 +43,18 @@ fn main() {
             commands::set_volume,
             commands::set_mute,
             commands::open_start_menu,
+            commands::minimize_all_windows,
             commands::hide_windows_taskbar,
             commands::show_windows_taskbar,
             commands::toggle_hud,
             commands::close_hwnds,
+            commands::app_info,
+            commands::show_in_explorer,
+            commands::run_as_admin,
+            commands::show_properties,
+            commands::copy_to_clipboard,
+            commands::show_menu,
+            commands::hide_menu,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
