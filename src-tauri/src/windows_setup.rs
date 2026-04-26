@@ -1,5 +1,5 @@
 use tauri::{App, WebviewUrl, WebviewWindowBuilder};
-use window_vibrancy::{apply_acrylic, apply_blur, apply_mica, apply_tabbed};
+use window_vibrancy::{apply_acrylic, apply_blur, apply_mica};
 use anyhow::Result;
 
 use crate::dwm;
@@ -19,6 +19,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .inner_size(dock_w, dock_h)
         .position((screen_w - dock_w) / 2.0, screen_h - dock_h - 12.0)
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
@@ -36,6 +37,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .inner_size(hud_w, hud_h)
         .position(hud_x, hud_y)
         .decorations(false)
+        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
@@ -47,28 +49,23 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 }
 
 fn apply_glass(window: &tauri::WebviewWindow) {
-    // Tauri's transparent(true) is intentionally NOT used. On some Win11
-    // builds it causes WebView2 to paint an opaque grey background that
-    // hides the Mica effect. Mica + DWM rounded corners give us the glass
-    // look without OS-level transparency.
+    // transparent(true) is required so WebView2 doesn't paint an opaque
+    // background on top of the Mica effect. With it set, Mica blurs the
+    // desktop wallpaper at the window's screen position. Auto theme so
+    // the tint matches the user's light/dark mode preference.
     let e_mica = apply_mica(window, None).err();
-    let e_tabbed = if e_mica.is_some() {
-        apply_tabbed(window, None).err()
+    let e_acrylic = if e_mica.is_some() {
+        apply_acrylic(window, Some((20, 20, 28, 180))).err()
     } else {
         None
     };
-    let e_acrylic = if e_mica.is_some() && e_tabbed.is_some() {
-        apply_acrylic(window, Some((0, 0, 0, 60))).err()
+    let e_blur = if e_mica.is_some() && e_acrylic.is_some() {
+        apply_blur(window, Some((20, 20, 28, 180))).err()
     } else {
         None
     };
-    let e_blur = if e_mica.is_some() && e_tabbed.is_some() && e_acrylic.is_some() {
-        apply_blur(window, Some((0, 0, 0, 60))).err()
-    } else {
-        None
-    };
-    if e_mica.is_some() && e_tabbed.is_some() && e_acrylic.is_some() && e_blur.is_some() {
-        tracing::warn!(?e_mica, ?e_tabbed, ?e_acrylic, ?e_blur, "no glass effect available");
+    if e_mica.is_some() && e_acrylic.is_some() && e_blur.is_some() {
+        tracing::warn!(?e_mica, ?e_acrylic, ?e_blur, "no glass effect available");
     }
 
     if let Ok(hwnd) = window.hwnd() {
