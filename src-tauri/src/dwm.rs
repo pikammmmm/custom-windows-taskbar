@@ -3,6 +3,7 @@ use windows::Win32::Graphics::Dwm::{
     DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
 };
+use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
@@ -25,6 +26,23 @@ pub fn round_corners(hwnd: isize) {
             &pref as *const _ as *const _,
             std::mem::size_of_val(&pref) as u32,
         );
+    }
+}
+
+/// Hard-clip the window to a rounded-rectangle region so the layered-alpha
+/// surface no longer paints in the corners. Without this the WS_EX_LAYERED
+/// window stays a perfect rectangle even with rounded CSS, leaving four
+/// faintly-tinted square corners around the glass pill.
+///
+/// `width` and `height` are physical pixels. Call AFTER the window is built
+/// and re-call if you ever resize it (we don't, so once is enough).
+pub fn apply_rounded_region(hwnd: isize, width: i32, height: i32, radius: i32) {
+    unsafe {
+        let rgn = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        if !rgn.0.is_null() {
+            // SetWindowRgn takes ownership of the region — don't free it.
+            let _ = SetWindowRgn(HWND(hwnd as *mut _), rgn, windows::Win32::Foundation::TRUE);
+        }
     }
 }
 

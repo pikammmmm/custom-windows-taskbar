@@ -30,7 +30,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     let screen_w = size.width as f64 / scale;
     let screen_h = size.height as f64 / scale;
 
-    let dock_w = 700.0;
+    let dock_w = 760.0;
     let dock_h = 64.0;
     let dock = WebviewWindowBuilder::new(app, "dock", WebviewUrl::App("dock/index.html".into()))
         .title("glassbar-dock")
@@ -46,6 +46,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .build()?;
     force_webview_transparent(&dock);
     apply_glass(&dock);
+    clip_to_rounded(&dock, 22.0, scale);
 
     let hud_w = 280.0;
     let hud_h = 380.0;
@@ -66,8 +67,16 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .build()?;
     force_webview_transparent(&hud);
     apply_glass(&hud);
+    clip_to_rounded(&hud, 22.0, scale);
 
     Ok(())
+}
+
+fn clip_to_rounded(window: &tauri::WebviewWindow, radius_logical: f64, scale: f64) {
+    let Ok(hwnd) = window.hwnd() else { return; };
+    let Ok(size) = window.outer_size() else { return; };
+    let radius_px = (radius_logical * scale).round() as i32;
+    dwm::apply_rounded_region(hwnd.0 as isize, size.width as i32, size.height as i32, radius_px);
 }
 
 fn apply_glass(window: &tauri::WebviewWindow) {
