@@ -5,8 +5,9 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW,
-    GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED,
+    GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
+    GWL_EXSTYLE, HWND_TOPMOST, LWA_ALPHA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE,
 };
 
 pub const BACKDROP_AUTO: i32 = 0;
@@ -52,6 +53,30 @@ pub fn make_layered_with_alpha(hwnd: isize, alpha: u8) {
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE);
         SetWindowLongPtrW(h, GWL_EXSTYLE, style | WS_EX_LAYERED.0 as isize);
         let _ = SetLayeredWindowAttributes(h, COLORREF(0), alpha, LWA_ALPHA);
+    }
+}
+
+/// Re-assert HWND_TOPMOST without moving/resizing/activating. Fullscreen
+/// (especially borderless-windowed) apps occasionally clobber z-order — a
+/// cheap periodic re-assert keeps the dock above F11 / game windows.
+pub fn assert_topmost(hwnd: isize) {
+    unsafe {
+        let _ = SetWindowPos(
+            HWND(hwnd as *mut _),
+            HWND_TOPMOST,
+            0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+/// Add WS_EX_NOACTIVATE so clicking the dock doesn't yank focus away from
+/// whatever the user was working with (game, IDE, etc).
+pub fn make_noactivate(hwnd: isize) {
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        let style = GetWindowLongPtrW(h, GWL_EXSTYLE);
+        SetWindowLongPtrW(h, GWL_EXSTYLE, style | WS_EX_NOACTIVATE.0 as isize);
     }
 }
 

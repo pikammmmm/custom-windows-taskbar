@@ -1,12 +1,12 @@
 :root {
   --glass-fg: rgba(255, 255, 255, 0.95);
   --glass-fg-dim: rgba(255, 255, 255, 0.55);
-  --glass-radius: 14px;
-  --glass-bg: rgba(12, 14, 20, 0.42);
-  --glass-bg-top: rgba(20, 24, 34, 0.50);
-  --glass-bg-bot: rgba(8, 10, 14, 0.42);
-  --glass-border: rgba(255, 255, 255, 0.10);
-  --glass-border-top: rgba(255, 255, 255, 0.18);
+  --glass-radius: 22px;
+  --glass-bg: rgba(12, 14, 20, 0.28);
+  --glass-bg-top: rgba(28, 32, 44, 0.36);
+  --glass-bg-bot: rgba(8, 10, 14, 0.30);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-top: rgba(255, 255, 255, 0.24);
 }
 
 html, body {
@@ -25,8 +25,8 @@ html, body {
   height: 100%;
   border-radius: var(--glass-radius);
   background: linear-gradient(180deg, var(--glass-bg-top) 0%, var(--glass-bg-bot) 100%);
-  backdrop-filter: blur(40px) saturate(160%);
-  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  backdrop-filter: blur(60px) saturate(180%);
+  -webkit-backdrop-filter: blur(60px) saturate(180%);
   border: 1px solid var(--glass-border);
   border-top-color: var(--glass-border-top);
   box-sizing: border-box;

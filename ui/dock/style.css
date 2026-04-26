@@ -30,6 +30,12 @@
   height: 32px;
   -webkit-user-drag: none;
 }
+.dock-icon.start-button svg {
+  filter: drop-shadow(0 0 6px rgba(92, 182, 255, 0.6));
+}
+.dock-icon.start-button:hover svg path {
+  fill: #8accff;
+}
 .dock-icon .icon-fallback {
   width: 32px;
   height: 32px;

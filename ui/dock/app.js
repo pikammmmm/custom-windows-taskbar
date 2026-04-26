@@ -48,6 +48,12 @@ async function render() {
   const pinnedExtras = visibleRunning.filter(a => !pinSet.has(a.exe_path.toLowerCase()));
 
   root.innerHTML = '';
+  root.appendChild(makeStartButton());
+  if (pinned.length || pinnedExtras.length) {
+    const sep = document.createElement('div');
+    sep.className = 'dock-divider';
+    root.appendChild(sep);
+  }
 
   for (const p of pinned) {
     root.appendChild(await iconNode({
@@ -104,6 +110,22 @@ async function iconNode({ exe, label, running }) {
 
   node.addEventListener('click', () => onClick(exe, label, running));
   node.addEventListener('contextmenu', (e) => { e.preventDefault(); onRightClick(exe, label, running, e); });
+  return node;
+}
+
+function makeStartButton() {
+  const node = document.createElement('div');
+  node.className = 'dock-icon start-button';
+  node.innerHTML = `
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+      <path fill="#5cb6ff" d="M3 5.5 11 4.4v7.1H3zM12 4.3 21 3v8.5h-9zM3 12.5h8v7.1L3 18.5zM12 12.5h9V21l-9-1.3z"/>
+    </svg>
+    <div class="tooltip">Start</div>
+  `;
+  node.addEventListener('click', (e) => {
+    e.stopPropagation();
+    invoke('open_start_menu').catch(() => {});
+  });
   return node;
 }
 

@@ -14,6 +14,9 @@ mod widgets;
 mod widget_state;
 mod autostart;
 mod dwm;
+mod import_pinned;
+mod shell_taskbar;
+mod dock_autohide;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -36,9 +39,27 @@ fn main() {
             commands::get_autostart,
             commands::set_volume,
             commands::set_mute,
+            commands::open_start_menu,
+            commands::hide_windows_taskbar,
+            commands::show_windows_taskbar,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
+            // First-run migration: if pinned.json doesn't exist yet, seed it
+            // from the user's existing Windows-taskbar pins.
+            if !pinned_path.exists() {
+                match import_pinned::read_taskbar_pins() {
+                    Ok(seed) if !seed.is_empty() => {
+                        if let Err(e) = pinned::save_to(&pinned_path, &seed) {
+                            tracing::warn!("seed pinned.json failed: {e}");
+                        } else {
+                            tracing::info!("seeded {} pinned apps from Windows taskbar", seed.len());
+                        }
+                    }
+                    Ok(_) => tracing::info!("no Windows-taskbar pins to import"),
+                    Err(e) => tracing::warn!("import_pinned failed: {e}"),
+                }
+            }
             let initial = pinned::load_from(&pinned_path).unwrap_or_default();
             let pinned_state: pinned::PinnedHandle = Arc::new(Mutex::new(initial));
 
@@ -61,8 +82,27 @@ fn main() {
             windows_setup::create_windows(app)?;
             app_tracker::spawn_poller(app.handle().clone(), std::time::Duration::from_millis(500));
             widget_state::spawn(app.handle().clone(), std::time::Duration::from_secs(1));
+
+            // Hide the original Windows taskbar so glassbar owns the strip.
+            // Re-asserted periodically because shell restarts (explorer crash,
+            // multi-monitor changes) can re-show it.
+            let _ = shell_taskbar::hide_windows_taskbar();
+            std::thread::spawn(|| loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                let _ = shell_taskbar::hide_windows_taskbar();
+            });
+
+            // Auto-hide dock + keep dock/HUD pinned above fullscreen apps.
+            dock_autohide::spawn(app.handle().clone());
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, event| {
+            // Restore the Windows taskbar on graceful exit so the user is not
+            // left without a working shell if they uninstall / quit glassbar.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                let _ = shell_taskbar::show_windows_taskbar();
+            }
+        });
 }

@@ -1,4 +1,4 @@
-use crate::{win32, pinned, icons, config, autostart};
+use crate::{win32, pinned, icons, config, autostart, shell_taskbar};
 use crate::widgets::audio;
 use std::process::Command;
 use serde::Serialize;
@@ -107,4 +107,19 @@ pub fn set_volume(percent: u8) -> Result<(), String> {
 #[tauri::command]
 pub fn set_mute(muted: bool) -> Result<(), String> {
     audio::set_mute(muted)
+}
+
+#[tauri::command]
+pub fn open_start_menu() -> Result<(), String> {
+    shell_taskbar::tap_start_key().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn hide_windows_taskbar() -> Result<usize, String> {
+    shell_taskbar::hide_windows_taskbar().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn show_windows_taskbar() -> Result<usize, String> {
+    shell_taskbar::show_windows_taskbar().map_err(|e| e.to_string())
 }
