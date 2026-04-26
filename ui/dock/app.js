@@ -1,5 +1,6 @@
 const { invoke } = window.__TAURI__.core;
 const { listen, emit } = window.__TAURI__.event;
+const { getCurrentWindow } = window.__TAURI__.window;
 
 const left = document.getElementById('dock-left');
 const center = document.getElementById('dock-center');
@@ -405,6 +406,21 @@ async function init() {
   await listen('pinned:changed', (e) => { pinned = e.payload; renderCenter(); });
   await listen('apps:changed',   (e) => { running = e.payload; renderCenter(); });
   await listen('hud:update',     (e) => updateTray(e.payload));
+
+  // Drag-and-drop pinning. Tauri's window-scoped drag-drop event delivers
+  // an array of OS file paths on drop; we hand them to pin_dropped which
+  // resolves .lnk → exe and ignores anything that isn't launchable.
+  await getCurrentWindow().onDragDropEvent((e) => {
+    if (e.payload?.type === 'over') {
+      document.body.classList.add('drop-active');
+    } else if (e.payload?.type === 'leave') {
+      document.body.classList.remove('drop-active');
+    } else if (e.payload?.type === 'drop') {
+      document.body.classList.remove('drop-active');
+      const paths = e.payload.paths || [];
+      if (paths.length > 0) invoke('pin_dropped', { paths }).catch(() => {});
+    }
+  });
 
   tickClock();
   setInterval(tickClock, 5_000);

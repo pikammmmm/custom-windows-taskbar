@@ -36,6 +36,7 @@ fn main() {
             commands::get_pinned,
             commands::get_icon,
             commands::pin_app,
+            commands::pin_dropped,
             commands::unpin_app,
             commands::set_hud_position,
             commands::set_autostart,

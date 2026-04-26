@@ -1,4 +1,4 @@
-use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar};
+use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned};
 use crate::widgets::{audio, media};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -95,6 +95,34 @@ pub fn pin_app(
     guard.push(pinned::PinnedApp { path, display_name, icon_path: None });
     let path_file = config::pinned_path().map_err(|e| e.to_string())?;
     pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
+    Ok(PinResult { pinned: guard.clone() })
+}
+
+/// Pin a batch of dropped paths (from a window file-drop). Resolves
+/// `.lnk` to the target exe; silently skips anything that isn't a
+/// launchable .exe / .lnk so the user gets no surprise from dragging
+/// a folder or document onto the dock.
+#[tauri::command]
+pub fn pin_dropped(
+    paths: Vec<String>,
+    state: State<'_, pinned::PinnedHandle>,
+) -> Result<PinResult, String> {
+    let mut guard = state.lock().unwrap();
+    let mut changed = false;
+    for raw in paths {
+        let Some((exe, display)) = import_pinned::resolve_drop(std::path::Path::new(&raw)) else {
+            continue;
+        };
+        if guard.iter().any(|a| a.path.eq_ignore_ascii_case(&exe)) {
+            continue;
+        }
+        guard.push(pinned::PinnedApp { path: exe, display_name: display, icon_path: None });
+        changed = true;
+    }
+    if changed {
+        let path_file = config::pinned_path().map_err(|e| e.to_string())?;
+        pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
+    }
     Ok(PinResult { pinned: guard.clone() })
 }
 
