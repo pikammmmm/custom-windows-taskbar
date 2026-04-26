@@ -13,6 +13,20 @@ fn last_menu_items() -> &'static Mutex<Option<serde_json::Value>> {
     SLOT.get_or_init(|| Mutex::new(None))
 }
 
+/// Wall-clock instant the menu was most recently shown. Read by the
+/// auto-dismiss poller in `dock_autohide` so we don't immediately hide the
+/// menu in the brief window before it has had a chance to take focus.
+fn menu_shown_at() -> &'static Mutex<Option<std::time::Instant>> {
+    static SLOT: OnceLock<Mutex<Option<std::time::Instant>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+pub fn last_menu_shown_at() -> Option<std::time::Instant> {
+    *menu_shown_at().lock().unwrap()
+}
+pub fn clear_menu_shown_at() {
+    *menu_shown_at().lock().unwrap() = None;
+}
+
 #[tauri::command]
 pub fn launch(path: String) -> Result<(), String> {
     Command::new(&path)
@@ -255,6 +269,13 @@ pub fn show_menu(app: AppHandle, args: ShowMenuArgs) -> Result<(), String> {
     let _ = app.emit_to("menu", "menu:items", args.items);
     win.show().map_err(|e| e.to_string())?;
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    // Force the menu to take focus — Tauri's show() doesn't always activate
+    // a topmost window that was previously hidden, and the auto-dismiss
+    // poller in dock_autohide needs the menu to be the foreground at least
+    // once before it's allowed to dismiss it (otherwise it'd hide a menu
+    // that just never activated).
+    let _ = win.set_focus();
+    *menu_shown_at().lock().unwrap() = Some(std::time::Instant::now());
     Ok(())
 }
 
@@ -274,5 +295,6 @@ pub fn hide_menu(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("menu") {
         win.hide().map_err(|e| e.to_string())?;
     }
+    clear_menu_shown_at();
     Ok(())
 }

@@ -3,7 +3,11 @@ use tauri::{AppHandle, Manager, PhysicalPosition};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
-use crate::{dwm, keyhook};
+use crate::{commands, dwm, keyhook, win32};
+
+/// Don't auto-dismiss the menu in the brief moment right after show — gives
+/// it time to take focus and avoids racing the very click that opened it.
+const MENU_DISMISS_GRACE_MS: u128 = 250;
 
 const POLL_MS: u64 = 16;          // ~60 Hz so position interpolation looks smooth
 const HIDE_AFTER_MS: u128 = 1500;
@@ -43,6 +47,17 @@ fn run(app: AppHandle) {
         .and_then(|w| w.hwnd().ok())
         .map(|h| h.0 as isize)
         .unwrap_or(0);
+    let menu_window = app.get_webview_window("menu");
+    let menu_hwnd = menu_window.as_ref()
+        .and_then(|w| w.hwnd().ok())
+        .map(|h| h.0 as isize)
+        .unwrap_or(0);
+    // True once we've observed the menu as the foreground window since the
+    // most recent `show_menu`. We only allow dismiss after this flips —
+    // otherwise a menu that fails to activate would auto-hide instantly
+    // when the grace window expires.
+    let mut menu_was_foreground = false;
+    let mut last_menu_shown_seen: Option<Instant> = None;
     let mut topmost_tick = Instant::now();
 
     let mut current_y = shown_y;
@@ -105,6 +120,42 @@ fn run(app: AppHandle) {
             }
             if t >= 1.0 {
                 anim_start = None;
+            }
+        }
+
+        // Auto-dismiss the right-click menu when the user clicks away.
+        // Focus events from the menu's WebView2 don't fire reliably, so we
+        // poll the foreground window instead.
+        //
+        // Algorithm:
+        //   - When show_menu records a fresh timestamp, reset our tracking.
+        //   - While menu is open, watch the foreground HWND.
+        //   - First time fg == menu_hwnd, latch `menu_was_foreground`.
+        //   - Once latched and grace expired, fg != menu_hwnd means the user
+        //     clicked something else — hide the menu.
+        // The latch guards against the case where the menu fails to activate
+        // (we'd otherwise dismiss it the instant the grace window ended).
+        if menu_hwnd != 0 {
+            if let Some(shown) = commands::last_menu_shown_at() {
+                if last_menu_shown_seen != Some(shown) {
+                    menu_was_foreground = false;
+                    last_menu_shown_seen = Some(shown);
+                }
+                let fg = win32::foreground_hwnd();
+                if fg == menu_hwnd {
+                    menu_was_foreground = true;
+                } else if menu_was_foreground
+                    && shown.elapsed().as_millis() > MENU_DISMISS_GRACE_MS
+                {
+                    if let Some(menu_win) = &menu_window {
+                        let _ = menu_win.hide();
+                    }
+                    commands::clear_menu_shown_at();
+                    last_menu_shown_seen = None;
+                }
+            } else {
+                last_menu_shown_seen = None;
+                menu_was_foreground = false;
             }
         }
 
