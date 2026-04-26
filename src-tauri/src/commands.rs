@@ -239,9 +239,21 @@ pub fn show_menu(app: AppHandle, args: ShowMenuArgs) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     win.set_position(PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())?;
-    app.emit_to("menu", "menu:items", args.items).map_err(|e| e.to_string())?;
+    // Emit once before show — covers the steady-state case where the menu
+    // window's listener has been registered since app start.
+    let _ = app.emit_to("menu", "menu:items", args.items.clone());
     win.show().map_err(|e| e.to_string())?;
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    // …then re-emit on a short delay. On the *first* right-click in a session
+    // the menu's WebView2 may still be coming up — JS hasn't run, so the
+    // pre-show emit has no listener and the event is lost. The post-show
+    // re-emit catches that case once `listen('menu:items', …)` resolves.
+    let app2 = app.clone();
+    let items = args.items;
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        let _ = app2.emit_to("menu", "menu:items", items);
+    });
     Ok(())
 }
 
