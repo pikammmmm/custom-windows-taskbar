@@ -30,6 +30,18 @@
   height: 32px;
   -webkit-user-drag: none;
 }
+.dock-icon .icon-fallback {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--glass-fg);
+  background: rgba(255,255,255,0.08);
+  border-radius: 8px;
+}
 .dock-icon .dot {
   position: absolute;
   bottom: 3px;

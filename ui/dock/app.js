@@ -20,6 +20,7 @@ async function getIcon(exePath) {
     iconCache.set(exePath, url);
     return url;
   } catch {
+    iconCache.set(exePath, '');
     return '';
   }
 }
@@ -60,10 +61,19 @@ async function render() {
 async function iconNode({ exe, label, running }) {
   const node = document.createElement('div');
   node.className = 'dock-icon';
-  const img = document.createElement('img');
-  img.src = await getIcon(exe);
-  img.alt = label;
-  node.appendChild(img);
+
+  const url = await getIcon(exe);
+  if (url) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = label;
+    img.addEventListener('error', () => {
+      img.replaceWith(makeFallback(label));
+    });
+    node.appendChild(img);
+  } else {
+    node.appendChild(makeFallback(label));
+  }
 
   const tip = document.createElement('div');
   tip.className = 'tooltip';
@@ -81,6 +91,14 @@ async function iconNode({ exe, label, running }) {
   node.addEventListener('click', () => onClick(exe, label, running));
   node.addEventListener('contextmenu', (e) => { e.preventDefault(); onRightClick(exe, label, running, e); });
   return node;
+}
+
+function makeFallback(label) {
+  const span = document.createElement('span');
+  span.className = 'icon-fallback';
+  const ch = (label || '?').trim().charAt(0).toUpperCase() || '?';
+  span.textContent = ch;
+  return span;
 }
 
 async function onClick(exe, _label, running) {
@@ -152,7 +170,6 @@ async function onRightClick(exe, label, running, event) {
 
   document.body.appendChild(menu);
   openMenu = menu;
-  // Stop the menu's first click from bubbling and closing it.
   setTimeout(() => menu.addEventListener('click', (e) => e.stopPropagation()), 0);
 }
 

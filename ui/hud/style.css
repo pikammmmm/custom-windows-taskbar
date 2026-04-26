@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   padding: 14px 16px;
-  gap: 10px;
+  gap: 8px;
   position: relative;
 }
 
@@ -16,6 +16,14 @@
   height: 1px;
   background: rgba(255,255,255,0.08);
   margin: 2px -4px;
+}
+
+.section-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--glass-fg-dim);
+  margin-bottom: 4px;
 }
 
 .clock-row .time {
@@ -42,6 +50,48 @@
 .arrow { color: #7ad; font-weight: bold; }
 .arrow.up { color: #fa7; }
 
+.audio-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vol-icon {
+  background: transparent;
+  border: none;
+  color: var(--glass-fg);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.vol-icon:hover { color: #fff; }
+#vol-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+}
+#vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+.vol-pct {
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+}
+
 .media-row .title {
   font-size: 13px;
   font-weight: 500;
@@ -55,6 +105,43 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.apps-row { flex: 1; min-height: 0; }
+.apps-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+.apps-list::-webkit-scrollbar { width: 6px; }
+.apps-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+}
+.apps-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.apps-item:hover { background: rgba(255,255,255,0.10); }
+.apps-item .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.apps-item .count {
+  color: var(--glass-fg-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .drag-handle {

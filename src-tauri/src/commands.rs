@@ -1,4 +1,5 @@
 use crate::{win32, pinned, icons, config, autostart};
+use crate::widgets::audio;
 use std::process::Command;
 use serde::Serialize;
 use tauri::State;
@@ -96,4 +97,14 @@ pub fn set_autostart(enable: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn get_autostart() -> bool {
     autostart::is_enabled()
+}
+
+#[tauri::command]
+pub fn set_volume(percent: u8) -> Result<(), String> {
+    audio::set_volume(percent)
+}
+
+#[tauri::command]
+pub fn set_mute(muted: bool) -> Result<(), String> {
+    audio::set_mute(muted)
 }

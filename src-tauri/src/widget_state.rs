@@ -1,4 +1,4 @@
-use crate::widgets::{clock, network, media};
+use crate::widgets::{audio, clock, network, media};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -8,6 +8,7 @@ pub struct HudSnapshot {
     pub clock: clock::ClockState,
     pub network: network::NetState,
     pub media: media::MediaState,
+    pub audio: audio::AudioState,
 }
 
 pub fn spawn(app: AppHandle, tick: Duration) {
@@ -23,6 +24,7 @@ pub fn spawn(app: AppHandle, tick: Duration) {
                 clock: clock::current(),
                 network: net.tick(),
                 media: media::current().unwrap_or_default(),
+                audio: audio::current(),
             };
             let changed_substantively = prev_snapshot.as_ref()
                 .map(|p| !snapshot_equivalent(p, &snapshot))
@@ -41,5 +43,6 @@ pub fn spawn(app: AppHandle, tick: Duration) {
 fn snapshot_equivalent(a: &HudSnapshot, b: &HudSnapshot) -> bool {
     a.network == b.network
         && a.media == b.media
-        && a.clock.now_local[..16] == b.clock.now_local[..16] // YYYY-MM-DDTHH:MM
+        && a.audio == b.audio
+        && a.clock.now_local[..16] == b.clock.now_local[..16]
 }

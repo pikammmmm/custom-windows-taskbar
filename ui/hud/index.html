@@ -8,7 +8,9 @@
       <div class="time" id="time">--:--</div>
       <div class="date" id="date">--</div>
     </div>
+
     <div class="sep"></div>
+
     <div class="row net-row">
       <div class="net-line">
         <span class="arrow down">↓</span>
@@ -19,11 +21,31 @@
         <span class="rate" id="up">0 KB/s</span>
       </div>
     </div>
+
     <div class="sep"></div>
+
+    <div class="row audio-row">
+      <div class="audio-line">
+        <button class="vol-icon" id="vol-icon" title="Mute / unmute">🔊</button>
+        <input type="range" id="vol-slider" min="0" max="100" value="50">
+        <span class="vol-pct" id="vol-pct">--%</span>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
     <div class="row media-row" id="media-row">
       <div class="title" id="media-title">Nothing playing</div>
       <div class="artist" id="media-artist"></div>
     </div>
+
+    <div class="sep"></div>
+
+    <div class="row apps-row">
+      <div class="section-label" id="apps-label">Apps</div>
+      <div class="apps-list" id="apps-list"></div>
+    </div>
+
     <div class="drag-handle" id="drag"></div>
   </div>
   <script type="module" src="app.js"></script>

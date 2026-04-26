@@ -13,6 +13,7 @@ mod commands;
 mod widgets;
 mod widget_state;
 mod autostart;
+mod dwm;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -33,6 +34,8 @@ fn main() {
             commands::set_hud_position,
             commands::set_autostart,
             commands::get_autostart,
+            commands::set_volume,
+            commands::set_mute,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;

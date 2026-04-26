@@ -1,6 +1,8 @@
 use tauri::{App, WebviewUrl, WebviewWindowBuilder};
-use window_vibrancy::{apply_mica, apply_acrylic};
+use window_vibrancy::{apply_acrylic, apply_mica};
 use anyhow::Result;
+
+use crate::dwm;
 
 pub fn create_windows(app: &mut App) -> Result<()> {
     let primary = app.primary_monitor()?
@@ -19,10 +21,10 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .decorations(false).transparent(true).always_on_top(true)
         .skip_taskbar(true).resizable(false).shadow(false)
         .build()?;
-    apply_blur(&dock);
+    apply_glass(&dock);
 
     let hud_w = 280.0;
-    let hud_h = 220.0;
+    let hud_h = 380.0;
     let settings = crate::config::load_settings().unwrap_or_default();
     let (hud_x, hud_y) = settings.hud_position
         .unwrap_or((screen_w - hud_w - 12.0, 12.0));
@@ -33,15 +35,20 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .decorations(false).transparent(true).always_on_top(true)
         .skip_taskbar(true).resizable(false).shadow(false)
         .build()?;
-    apply_blur(&hud);
+    apply_glass(&hud);
 
     Ok(())
 }
 
-fn apply_blur(window: &tauri::WebviewWindow) {
-    if let Err(mica_err) = apply_mica(window, Some(true)) {
-        if let Err(acrylic_err) = apply_acrylic(window, Some((20, 20, 25, 160))) {
-            tracing::warn!(?mica_err, ?acrylic_err, "blur unavailable on this OS");
+fn apply_glass(window: &tauri::WebviewWindow) {
+    // Acrylic first — more transparent / glassy. Mica fallback for older Win10.
+    if let Err(acrylic_err) = apply_acrylic(window, Some((18, 18, 24, 140))) {
+        if let Err(mica_err) = apply_mica(window, Some(true)) {
+            tracing::warn!(?acrylic_err, ?mica_err, "blur unavailable on this OS");
         }
+    }
+
+    if let Ok(hwnd) = window.hwnd() {
+        dwm::round_corners(hwnd.0 as isize);
     }
 }
