@@ -1,8 +1,17 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar};
 use crate::widgets::audio;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State};
+
+/// Last items payload handed to `show_menu`. The menu window pulls this on
+/// every show via `get_menu_items`, which avoids losing items when the
+/// pre-show emit races the WebView's listener registration on first launch.
+fn last_menu_items() -> &'static Mutex<Option<serde_json::Value>> {
+    static SLOT: OnceLock<Mutex<Option<serde_json::Value>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
 
 #[tauri::command]
 pub fn launch(path: String) -> Result<(), String> {
@@ -239,22 +248,25 @@ pub fn show_menu(app: AppHandle, args: ShowMenuArgs) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     win.set_position(PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())?;
-    // Emit once before show — covers the steady-state case where the menu
-    // window's listener has been registered since app start.
-    let _ = app.emit_to("menu", "menu:items", args.items.clone());
+    // Stash the items so the menu window can pull them on its first
+    // post-show render — the event below is the fast path; `get_menu_items`
+    // is the always-correct fallback when the listener isn't ready yet.
+    *last_menu_items().lock().unwrap() = Some(args.items.clone());
+    let _ = app.emit_to("menu", "menu:items", args.items);
     win.show().map_err(|e| e.to_string())?;
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
-    // …then re-emit on a short delay. On the *first* right-click in a session
-    // the menu's WebView2 may still be coming up — JS hasn't run, so the
-    // pre-show emit has no listener and the event is lost. The post-show
-    // re-emit catches that case once `listen('menu:items', …)` resolves.
-    let app2 = app.clone();
-    let items = args.items;
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(60));
-        let _ = app2.emit_to("menu", "menu:items", items);
-    });
     Ok(())
+}
+
+/// Returns the items handed to the most recent `show_menu` call. Lets the
+/// menu window's JS render without depending on event-listener timing.
+#[tauri::command]
+pub fn get_menu_items() -> serde_json::Value {
+    last_menu_items()
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap_or(serde_json::Value::Array(vec![]))
 }
 
 #[tauri::command]

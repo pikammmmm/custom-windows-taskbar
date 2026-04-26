@@ -54,6 +54,7 @@ fn main() {
             commands::show_properties,
             commands::copy_to_clipboard,
             commands::show_menu,
+            commands::get_menu_items,
             commands::hide_menu,
         ])
         .setup(|app| {

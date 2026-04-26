@@ -4,15 +4,43 @@ const { getCurrentWindow } = window.__TAURI__.window;
 
 const itemsRoot = document.getElementById('items');
 
-// Render the items payload sent by the dock via Rust's `menu:items` event.
-// Shape: array of { kind: 'header'|'separator'|'item', ...fields }.
-listen('menu:items', (e) => {
-  const items = Array.isArray(e.payload) ? e.payload : [];
+function renderItems(items) {
+  const list = Array.isArray(items) ? items : [];
   itemsRoot.innerHTML = '';
-  for (const item of items) {
+  for (const item of list) {
     itemsRoot.appendChild(renderItem(item));
   }
+}
+
+// Fast path — the dock-side `show_menu` emits this right before showing
+// the window. Works once the listener is registered (steady state).
+listen('menu:items', (e) => renderItems(e.payload));
+
+// Reliable path — pull the last items via a Tauri command. Guarantees the
+// menu populates even when the event arrived before the listener was ready
+// (cold-start race on first right-click of a session).
+async function pullItems() {
+  try {
+    const items = await invoke('get_menu_items');
+    if (Array.isArray(items) && items.length > 0) renderItems(items);
+  } catch {}
+}
+
+// Re-pull on every show. The dock calls show_menu → window becomes visible
+// → onFocusChanged fires (focused=true on first show, focused=false on
+// dismiss). Pull on focused=true; dismiss on focused=false.
+const win = getCurrentWindow();
+win.onFocusChanged(({ payload: focused }) => {
+  if (focused) {
+    pullItems();
+  } else {
+    invoke('hide_menu').catch(() => {});
+  }
 });
+
+// First-load pull — covers the case where onFocusChanged doesn't fire on
+// the very first show (no-activate windows can be flaky about it).
+pullItems();
 
 function renderItem(item) {
   if (item.kind === 'separator') {
@@ -83,15 +111,6 @@ function renderRow({ label, glyph, action, args, danger, windowRow }) {
   return row;
 }
 
-// Auto-dismiss: Escape key, or losing focus (clicking anywhere outside).
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') invoke('hide_menu').catch(() => {});
-});
-
-// Tauri's window blur fires when the user clicks outside the menu — exactly
-// what we want for click-anywhere-to-dismiss. Listening on the focused-changed
-// event covers it cross-platform.
-const win = getCurrentWindow();
-win.onFocusChanged(({ payload: focused }) => {
-  if (!focused) invoke('hide_menu').catch(() => {});
 });
