@@ -3,44 +3,51 @@ const { listen } = window.__TAURI__.event;
 const { getCurrentWindow } = window.__TAURI__.window;
 
 const itemsRoot = document.getElementById('items');
+const probe = document.getElementById('probe');
+
+function setProbe(s) { if (probe) probe.textContent = s; }
+setProbe('js');
 
 function renderItems(items) {
   const list = Array.isArray(items) ? items : [];
+  if (list.length === 0) {
+    setProbe(`render:0`);
+    return; // keep "no items yet" placeholder so we can see we got here
+  }
   itemsRoot.innerHTML = '';
   for (const item of list) {
     itemsRoot.appendChild(renderItem(item));
   }
+  setProbe(`render:${list.length}`);
 }
 
-// Fast path — the dock-side `show_menu` emits this right before showing
-// the window. Works once the listener is registered (steady state).
-listen('menu:items', (e) => renderItems(e.payload));
+// Fast path
+listen('menu:items', (e) => {
+  setProbe(`evt:${Array.isArray(e.payload) ? e.payload.length : '?'}`);
+  renderItems(e.payload);
+}).then(() => setProbe('listening'));
 
-// Reliable path — pull the last items via a Tauri command. Guarantees the
-// menu populates even when the event arrived before the listener was ready
-// (cold-start race on first right-click of a session).
+// Pull path — also runs on a slow tick so timing/focus quirks can't keep
+// the menu blank forever. Cheap (single IPC call).
 async function pullItems() {
   try {
     const items = await invoke('get_menu_items');
+    setProbe(`pull:${Array.isArray(items) ? items.length : '?'}`);
     if (Array.isArray(items) && items.length > 0) renderItems(items);
-  } catch {}
+  } catch (e) {
+    setProbe(`err:${String(e).slice(0, 12)}`);
+  }
 }
 
-// Re-pull on every show. The dock calls show_menu → window becomes visible
-// → onFocusChanged fires (focused=true on first show, focused=false on
-// dismiss). Pull on focused=true; dismiss on focused=false.
 const win = getCurrentWindow();
 win.onFocusChanged(({ payload: focused }) => {
-  if (focused) {
-    pullItems();
-  } else {
-    invoke('hide_menu').catch(() => {});
-  }
+  setProbe(`focus:${focused}`);
+  if (focused) pullItems();
+  else invoke('hide_menu').catch(() => {});
 });
 
-// First-load pull — covers the case where onFocusChanged doesn't fire on
-// the very first show (no-activate windows can be flaky about it).
 pullItems();
+setInterval(pullItems, 250); // safety-net poll while diagnosing
 
 function renderItem(item) {
   if (item.kind === 'separator') {
