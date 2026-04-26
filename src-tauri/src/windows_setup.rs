@@ -42,7 +42,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
 
 fn apply_glass(window: &tauri::WebviewWindow) {
     // Acrylic first — more transparent / glassy. Mica fallback for older Win10.
-    if let Err(acrylic_err) = apply_acrylic(window, Some((18, 18, 24, 140))) {
+    if let Err(acrylic_err) = apply_acrylic(window, Some((10, 10, 14, 70))) {
         if let Err(mica_err) = apply_mica(window, Some(true)) {
             tracing::warn!(?acrylic_err, ?mica_err, "blur unavailable on this OS");
         }
