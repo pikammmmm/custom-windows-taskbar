@@ -283,11 +283,37 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
     }
 }
 
+/// "Close all" from the dock's right-click menu — matches Task Manager's
+/// End Task semantics. Posts WM_CLOSE first so apps that handle it can
+/// flush state, then after a short grace window force-kills the process
+/// for any windows still alive.
 #[tauri::command]
 pub fn close_hwnds(hwnds: Vec<isize>) -> Result<(), String> {
-    for h in hwnds {
+    use std::collections::HashSet;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+
+    // Phase 1 — graceful WM_CLOSE for every hwnd.
+    for &h in &hwnds {
         let _ = win32::close(h);
     }
+
+    // Phase 2 — wait briefly, then TerminateProcess on whatever is left.
+    // Spawned so the IPC reply can return immediately to the dock UI.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let mut killed: HashSet<u32> = HashSet::new();
+        for h in hwnds {
+            // Skip if the window already went away.
+            unsafe {
+                if !IsWindow(HWND(h as *mut _)).as_bool() { continue; }
+            }
+            let pid = win32::pid_of(h);
+            if pid == 0 || !killed.insert(pid) { continue; }
+            let _ = win32::terminate_process_of(h);
+        }
+    });
+
     Ok(())
 }
 

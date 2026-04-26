@@ -6,8 +6,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SW_MINIMIZE, SW_RESTORE, IsIconic, GetForegroundWindow, PostMessageW, WM_CLOSE,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
-    PROCESS_NAME_FORMAT,
+    OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, QueryFullProcessImageNameW,
+    PROCESS_NAME_FORMAT, TerminateProcess,
 };
 
 #[derive(Debug, Clone)]
@@ -100,6 +100,32 @@ pub fn close(hwnd: isize) -> Result<()> {
         PostMessageW(HWND(hwnd as *mut _), WM_CLOSE, windows::Win32::Foundation::WPARAM(0), LPARAM(0))?;
     }
     Ok(())
+}
+
+/// Force-kill the process owning `hwnd` (Task-Manager → End Task semantics).
+/// No prompt, no graceful shutdown — used by the dock's "Close all" so the
+/// behaviour matches what the user expects from End Task.
+pub fn terminate_process_of(hwnd: isize) -> Result<()> {
+    unsafe {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(HWND(hwnd as *mut _), Some(&mut pid));
+        if pid == 0 { return Err(anyhow!("no pid for hwnd")); }
+        let handle = OpenProcess(PROCESS_TERMINATE, false, pid)?;
+        let res = TerminateProcess(handle, 1);
+        let _ = CloseHandle(handle);
+        res?;
+    }
+    Ok(())
+}
+
+/// Resolve the OS process ID that owns `hwnd`. Returns 0 if it can't be
+/// determined (caller can use that as a sentinel).
+pub fn pid_of(hwnd: isize) -> u32 {
+    unsafe {
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(HWND(hwnd as *mut _), Some(&mut pid));
+        pid
+    }
 }
 
 pub fn foreground_hwnd() -> isize {
