@@ -1,4 +1,4 @@
-use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned};
+use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
 use crate::widgets::{audio, media, start_menu};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -101,6 +101,61 @@ pub fn pin_app(
 #[tauri::command]
 pub fn recent_files() -> Result<Vec<import_pinned::RecentFile>, String> {
     import_pinned::recent_files(7).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn stash_list(state: State<'_, stash::StashHandle>) -> Vec<stash::StashEntry> {
+    state.lock().unwrap().clone()
+}
+
+#[tauri::command]
+pub fn stash_add(
+    paths: Vec<String>,
+    state: State<'_, stash::StashHandle>,
+    app: AppHandle,
+) -> Result<Vec<stash::StashEntry>, String> {
+    let mut guard = state.lock().unwrap();
+    let mut changed = false;
+    for p in paths {
+        if guard.iter().any(|e| e.path.eq_ignore_ascii_case(&p)) { continue; }
+        if let Some(entry) = stash::entry_for(&p) {
+            guard.push(entry);
+            changed = true;
+        }
+    }
+    if changed {
+        stash::save(&guard).map_err(|e| e.to_string())?;
+        let _ = app.emit("stash:changed", &*guard);
+    }
+    Ok(guard.clone())
+}
+
+#[tauri::command]
+pub fn stash_remove(
+    path: String,
+    state: State<'_, stash::StashHandle>,
+    app: AppHandle,
+) -> Result<Vec<stash::StashEntry>, String> {
+    let mut guard = state.lock().unwrap();
+    let before = guard.len();
+    guard.retain(|e| !e.path.eq_ignore_ascii_case(&path));
+    if guard.len() != before {
+        stash::save(&guard).map_err(|e| e.to_string())?;
+        let _ = app.emit("stash:changed", &*guard);
+    }
+    Ok(guard.clone())
+}
+
+#[tauri::command]
+pub fn stash_clear(
+    state: State<'_, stash::StashHandle>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let mut guard = state.lock().unwrap();
+    guard.clear();
+    stash::save(&guard).map_err(|e| e.to_string())?;
+    let _ = app.emit("stash:changed", &*guard);
+    Ok(())
 }
 
 #[tauri::command]

@@ -296,6 +296,78 @@
 }
 .quick-btn:active { transform: scale(0.94); }
 
+/* Files stash — drop zone + draggable file rows */
+.stash-block { padding: 6px 6px 8px; }
+.stash-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 6px;
+  max-height: 260px;
+  overflow: hidden;
+  transition: max-height 220ms ease, opacity 180ms ease;
+}
+.stash-block[aria-expanded="false"] .stash-body { max-height: 0; opacity: 0; padding: 0 6px; }
+.stash-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  border: 1px dashed rgba(255,255,255,0.18);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  text-align: center;
+  transition: background 140ms ease, border-color 140ms ease;
+  min-height: 36px;
+}
+.stash-dropzone.over {
+  background: rgba(92, 182, 255, 0.12);
+  border-color: rgba(92, 182, 255, 0.55);
+  color: var(--glass-fg);
+}
+.stash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.18) transparent;
+}
+.stash-list::-webkit-scrollbar { width: 6px; }
+.stash-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
+.stash-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: grab;
+  transition: background 100ms ease;
+}
+.stash-item:hover { background: rgba(255,255,255,0.08); }
+.stash-item:active { cursor: grabbing; }
+.stash-item .stash-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stash-item .stash-remove {
+  background: transparent;
+  border: none;
+  color: var(--glass-fg-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  visibility: hidden;
+}
+.stash-item:hover .stash-remove { visibility: visible; }
+.stash-item .stash-remove:hover { background: rgba(255,255,255,0.10); color: #f88; }
+
 /* Settings section — collapsible. Reuses .apps-header styles for the header. */
 .settings-block { padding: 6px 6px 8px; }
 .settings-list {

@@ -19,6 +19,7 @@ mod shell_taskbar;
 mod dock_autohide;
 mod keyhook;
 mod app_actions;
+mod stash;
 
 /// Watch the Windows-taskbar pin folder and merge new entries into our
 /// pinned.json. Polling is fine here — pins change rarely (a few times
@@ -102,6 +103,7 @@ fn main() {
         .init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
             commands::launch,
             commands::launch_uri,
@@ -114,6 +116,10 @@ fn main() {
             commands::pin_app,
             commands::pin_dropped,
             commands::recent_files,
+            commands::stash_list,
+            commands::stash_add,
+            commands::stash_remove,
+            commands::stash_clear,
             commands::search_apps,
             commands::show_spotlight,
             commands::hide_spotlight,
@@ -191,6 +197,13 @@ fn main() {
             }
 
             app.manage(pinned_state);
+
+            // Load the file stash from disk and register as Tauri-managed state
+            // so commands can pick it up via `State<'_, stash::StashHandle>`.
+            let stash_initial = stash::load().unwrap_or_default();
+            let stash_state: stash::StashHandle = Arc::new(Mutex::new(stash_initial));
+            app.manage(stash_state);
+
             windows_setup::create_windows(app)?;
             app_tracker::spawn_poller(app.handle().clone(), std::time::Duration::from_millis(500));
             widget_state::spawn(app.handle().clone(), std::time::Duration::from_secs(1));

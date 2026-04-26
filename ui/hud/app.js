@@ -1,4 +1,4 @@
-const { invoke } = window.__TAURI__.core;
+const { invoke, Channel } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { getCurrentWindow, LogicalPosition } = window.__TAURI__.window;
 
@@ -204,6 +204,109 @@ el.appsToggle.addEventListener('click', () => {
   el.appsToggle.setAttribute('aria-expanded', String(!expanded));
   el.appsList.classList.toggle('collapsed', expanded);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Files stash — drop files in, drag them back out anywhere
+// ─────────────────────────────────────────────────────────────────────────
+const stashToggle = document.getElementById('stash-toggle');
+const stashBody = document.getElementById('stash-body');
+const stashBlock = document.getElementById('stash-block');
+const stashDropzone = document.getElementById('stash-dropzone');
+const stashList = document.getElementById('stash-list');
+const stashLabel = document.getElementById('stash-label');
+
+stashToggle.addEventListener('click', () => {
+  const expanded = stashToggle.getAttribute('aria-expanded') === 'true';
+  stashToggle.setAttribute('aria-expanded', String(!expanded));
+  stashBlock.setAttribute('aria-expanded', String(!expanded));
+});
+
+// 1×1 transparent PNG used as the drag image — the OS only needs *something*
+// to follow the cursor; the real preview is the drop target's responsibility.
+const TRANSPARENT_PNG_B64 =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+function renderStash(entries) {
+  const list = Array.isArray(entries) ? entries : [];
+  stashLabel.textContent = list.length ? `Files · ${list.length}` : 'Files';
+  stashList.innerHTML = '';
+  for (const e of list) {
+    const row = document.createElement('div');
+    row.className = 'stash-item';
+    row.title = e.path;
+    row.draggable = true;
+
+    const name = document.createElement('span');
+    name.className = 'stash-name';
+    name.textContent = e.name;
+
+    const rm = document.createElement('button');
+    rm.className = 'stash-remove';
+    rm.textContent = '×';
+    rm.title = 'Remove from stash';
+    rm.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      invoke('stash_remove', { path: e.path }).catch(() => {});
+    });
+
+    // Initiate a real OS drag via tauri-plugin-drag. Calling the plugin
+    // command synchronously inside dragstart hands the active drag to the
+    // OS so it lands as a real file at whatever the user drops on.
+    row.addEventListener('dragstart', (ev) => {
+      // Suppress the browser's default text drag — we replace it with
+      // the native one. Without this both run and the OS drop is dropped.
+      ev.preventDefault();
+      const onEvent = new Channel();
+      invoke('plugin:drag|start_drag', {
+        item: [e.path],
+        image: TRANSPARENT_PNG_B64,
+        onEvent,
+      }).catch((err) => console.error('start_drag failed', err));
+    });
+
+    row.appendChild(name);
+    row.appendChild(rm);
+    stashList.appendChild(row);
+  }
+}
+
+// Tauri's window-scoped drag-drop event delivers OS file paths. We accept
+// only drops whose cursor position fell inside the dropzone's bounding box,
+// so the user can still drag elsewhere on the HUD without it stealing files.
+let stashOver = false;
+function pointInDropzone(p) {
+  if (!p) return false;
+  const r = stashDropzone.getBoundingClientRect();
+  // Tauri payload position is in physical pixels; convert with dpr.
+  const dpr = window.devicePixelRatio || 1;
+  const x = p.x / dpr;
+  const y = p.y / dpr;
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+getCurrentWindow().onDragDropEvent((e) => {
+  const p = e.payload;
+  if (p?.type === 'over') {
+    const over = pointInDropzone(p.position);
+    if (over !== stashOver) {
+      stashOver = over;
+      stashDropzone.classList.toggle('over', over);
+    }
+  } else if (p?.type === 'leave') {
+    stashOver = false;
+    stashDropzone.classList.remove('over');
+  } else if (p?.type === 'drop') {
+    const wasOver = pointInDropzone(p.position);
+    stashOver = false;
+    stashDropzone.classList.remove('over');
+    if (wasOver && Array.isArray(p.paths) && p.paths.length > 0) {
+      invoke('stash_add', { paths: p.paths }).catch(() => {});
+    }
+  }
+});
+
+// Initial paint + live updates from Rust.
+invoke('stash_list').then(renderStash).catch(() => {});
+listen('stash:changed', (e) => renderStash(e.payload));
 
 // Settings section
 const settingsToggle = document.getElementById('settings-toggle');
