@@ -43,7 +43,10 @@ async function pullItems() {
     maybeRender(items);
   } catch {}
 }
-setInterval(pullItems, 250);
+// 500ms is plenty: the menu is only useful for as long as the user can
+// keep their cursor still on it, so a half-second to fill is fine and
+// halves IPC traffic relative to the 250ms diagnostic interval.
+setInterval(pullItems, 500);
 pullItems();
 
 const win = getCurrentWindow();

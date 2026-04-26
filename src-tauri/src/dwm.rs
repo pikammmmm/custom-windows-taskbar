@@ -1,11 +1,10 @@
 use windows::Win32::Foundation::{BOOL, COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{
-    DwmExtendFrameIntoClientArea, DwmSetWindowAttribute, DWMNCRP_DISABLED,
+    DwmSetWindowAttribute, DWMNCRP_DISABLED,
     DWMWA_NCRENDERING_POLICY, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMNCRENDERINGPOLICY, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
 };
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
-use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
     GWL_EXSTYLE, GWL_STYLE, HWND_TOP, HWND_TOPMOST, LWA_ALPHA, SWP_FRAMECHANGED,
@@ -14,11 +13,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 
-pub const BACKDROP_AUTO: i32 = 0;
-pub const BACKDROP_NONE: i32 = 1;
 pub const BACKDROP_MICA: i32 = 2;
 pub const BACKDROP_ACRYLIC: i32 = 3; // DWMSBT_TRANSIENTWINDOW — true see-through glass on Win11
-pub const BACKDROP_TABBED: i32 = 4;
 
 pub fn round_corners(hwnd: isize) {
     let pref = DWMWCP_ROUND;
@@ -46,21 +42,6 @@ pub fn apply_rounded_region(hwnd: isize, width: i32, height: i32, radius: i32) {
             // SetWindowRgn takes ownership of the region — don't free it.
             let _ = SetWindowRgn(HWND(hwnd as *mut _), rgn, windows::Win32::Foundation::TRUE);
         }
-    }
-}
-
-/// Extend the DWM frame into the entire client area so the backdrop has
-/// somewhere to render. Required for DWMWA_SYSTEMBACKDROP_TYPE to take
-/// visible effect on a borderless transparent window.
-pub fn extend_frame_into_client(hwnd: isize) {
-    let margins = MARGINS {
-        cxLeftWidth: -1,
-        cxRightWidth: -1,
-        cyTopHeight: -1,
-        cyBottomHeight: -1,
-    };
-    unsafe {
-        let _ = DwmExtendFrameIntoClientArea(HWND(hwnd as *mut _), &margins);
     }
 }
 
