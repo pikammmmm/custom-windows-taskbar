@@ -20,6 +20,55 @@ mod dock_autohide;
 mod keyhook;
 mod app_actions;
 
+/// Watch the Windows-taskbar pin folder and merge new entries into our
+/// pinned.json. Polling is fine here — pins change rarely (a few times
+/// a day at most) so a 5s tick is invisible. notify watchers on the
+/// IE Quick Launch folder are flaky on Win11 because Explorer rewrites
+/// the directory atomically.
+fn sync_taskbar_pins_loop(
+    tb_dir: std::path::PathBuf,
+    pinned_path: std::path::PathBuf,
+    pinned_state: pinned::PinnedHandle,
+) {
+    use std::time::Duration;
+    let mut last_count: usize = 0;
+    loop {
+        std::thread::sleep(Duration::from_secs(5));
+        if !tb_dir.is_dir() { continue; }
+        // Cheap change detector: count of .lnk files. If it didn't change,
+        // skip the actual re-import work. Misses rename-in-place but those
+        // are rare and a missed sync just means the user has to relaunch.
+        let count = std::fs::read_dir(&tb_dir)
+            .map(|rd| rd.filter_map(|e| e.ok())
+                .filter(|e| e.path().extension()
+                    .and_then(|x| x.to_str())
+                    .map(|s| s.eq_ignore_ascii_case("lnk"))
+                    == Some(true))
+                .count())
+            .unwrap_or(0);
+        if count == last_count { continue; }
+        last_count = count;
+
+        let Ok(taskbar_pins) = import_pinned::read_taskbar_pins() else { continue };
+        let mut guard = pinned_state.lock().unwrap();
+        let mut changed = false;
+        for tp in taskbar_pins {
+            if guard.iter().any(|p| p.path.eq_ignore_ascii_case(&tp.path)) {
+                continue;
+            }
+            guard.push(tp);
+            changed = true;
+        }
+        if changed {
+            if let Err(e) = pinned::save_to(&pinned_path, &guard) {
+                tracing::warn!("save pinned.json after taskbar sync failed: {e}");
+            }
+            // No explicit emit — the file watcher above re-reads pinned.json
+            // and broadcasts pinned:changed, so the dock UI updates itself.
+        }
+    }
+}
+
 /// Bail out immediately if another glassbar.exe is already running. Uses a
 /// named kernel mutex so the lock is reliable across processes (cargo
 /// builds + autostart + manual relaunch can otherwise pile up instances).
@@ -128,6 +177,18 @@ fn main() {
                 let _ = app_handle.emit("pinned:changed", apps);
             })?;
             std::mem::forget(_watcher); // keep watcher alive for app lifetime
+
+            // Live sync from the Windows taskbar pin folder. Anything the
+            // user pins to the OS taskbar shows up on the dock too — without
+            // this we only import once at first run. We additively merge:
+            // new TaskBar pins get added, but pins that exist only on the
+            // dock (drag-to-pin) stay put.
+            let taskbar_pinned_path = pinned_path.clone();
+            let taskbar_pinned_state = pinned_state.clone();
+            if let Some(tb_dir) = import_pinned::taskbar_pin_dir() {
+                std::thread::spawn(move || sync_taskbar_pins_loop(
+                    tb_dir, taskbar_pinned_path, taskbar_pinned_state));
+            }
 
             app.manage(pinned_state);
             windows_setup::create_windows(app)?;
