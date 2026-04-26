@@ -93,11 +93,24 @@ async function iconNode({ exe, label, running }) {
   return node;
 }
 
+const FALLBACK_PALETTE = [
+  '#4f7cff', '#ef476f', '#06d6a0', '#ffd166',
+  '#9d4edd', '#f8961e', '#43aa8b', '#ec4899',
+  '#22d3ee', '#f97316', '#84cc16', '#a855f7',
+];
+function colorFor(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+  }
+  return FALLBACK_PALETTE[Math.abs(h) % FALLBACK_PALETTE.length];
+}
 function makeFallback(label) {
   const span = document.createElement('span');
   span.className = 'icon-fallback';
-  const ch = (label || '?').trim().charAt(0).toUpperCase() || '?';
-  span.textContent = ch;
+  const cleaned = (label || '?').trim();
+  span.textContent = (cleaned.charAt(0) || '?').toUpperCase();
+  span.style.background = `linear-gradient(135deg, ${colorFor(cleaned)}, ${colorFor(cleaned + 'x')})`;
   return span;
 }
 

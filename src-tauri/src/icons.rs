@@ -60,7 +60,7 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
         let png = hicon_to_png(large, ICON_SIZE);
         unsafe { let _ = DestroyIcon(large); }
         if let Ok(data) = png {
-            return Ok(data);
+            if !looks_generic(&data) { return Ok(data); }
         }
     }
 
@@ -80,7 +80,18 @@ fn extract_icon_png(exe_path: &str) -> Result<Vec<u8>> {
     }
     let png = hicon_to_png(info.hIcon, ICON_SIZE);
     unsafe { let _ = DestroyIcon(info.hIcon); }
-    png
+    let data = png?;
+    if looks_generic(&data) {
+        return Err(anyhow!("only generic icon available for {exe_path}"));
+    }
+    Ok(data)
+}
+
+/// The Windows stock "unknown application" icon compresses to ~846 bytes at
+/// 32x32. Anything below ~1 KB is almost certainly a stock placeholder, so we
+/// reject it and let the frontend render its letter fallback instead.
+fn looks_generic(png: &[u8]) -> bool {
+    png.len() < 1024
 }
 
 /// Renders an HICON onto a fresh 32bpp DIB section via DrawIconEx, then reads
