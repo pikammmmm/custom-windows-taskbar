@@ -296,6 +296,44 @@
 }
 .quick-btn:active { transform: scale(0.94); }
 
+/* WARP toggle — colour follows connection state. The status dot in the
+   bottom-right corner is the at-a-glance signal. */
+.quick-btn.warp-btn {
+  position: relative;
+}
+.quick-btn.warp-btn[data-status="connected"] {
+  background: rgba(246, 130, 31, 0.22);          /* Cloudflare orange tint */
+  border-color: rgba(246, 130, 31, 0.55);
+  color: #ffb56b;
+  box-shadow: 0 0 14px rgba(246, 130, 31, 0.30);
+}
+.quick-btn.warp-btn[data-status="disconnected"] {
+  background: rgba(255,255,255,0.04);
+  color: var(--glass-fg-dim);
+}
+.quick-btn.warp-btn[data-status="unknown"] {
+  opacity: 0.55;
+}
+.quick-btn.warp-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #555;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+.quick-btn.warp-btn[data-status="connected"]::after {
+  background: #f6821f;
+  box-shadow: 0 0 6px #f6821f;
+}
+.quick-btn.warp-btn[data-status="unknown"]::after {
+  background: transparent;
+  box-shadow: none;
+}
+
 /* Files stash — drop zone + draggable file rows */
 .stash-block { padding: 6px 6px 8px; }
 .stash-body {
