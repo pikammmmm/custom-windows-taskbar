@@ -336,7 +336,9 @@ document.querySelectorAll('.quick-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const uri = btn.dataset.uri;
     const action = btn.dataset.action;
+    const launchPath = btn.dataset.launch;
     if (uri) invoke('launch_uri', { uri }).catch(() => {});
+    else if (launchPath) invoke('launch', { path: launchPath }).catch(() => {});
     else if (action && QUICK_ACTIONS[action]) QUICK_ACTIONS[action]().catch(() => {});
   });
 });
