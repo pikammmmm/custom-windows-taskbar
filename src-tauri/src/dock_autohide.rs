@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 use windows::Win32::Foundation::POINT;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
 use crate::{commands, dwm, keyhook, win32};
@@ -88,7 +89,24 @@ fn run(app: AppHandle) {
             last_in_zone = Instant::now();
             if !visible {
                 visible = true;
-                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
+                // If the user is mid-drag (left mouse button held while
+                // crossing into the trigger zone), the slide-up animation
+                // would race the drop — they'd often release before the
+                // dock has reached its shown position, so the drop misses
+                // the window entirely. Snap straight to shown so the drop
+                // target is registered the instant the cursor arrives.
+                let lbutton_down = unsafe {
+                    (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0
+                };
+                if lbutton_down {
+                    current_y = shown_y;
+                    target_y = shown_y;
+                    anim_from_y = shown_y;
+                    anim_start = None;
+                    let _ = window.set_position(PhysicalPosition { x: dock_left, y: current_y });
+                } else {
+                    start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
+                }
             }
         } else if visible && !win_pinned && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
             visible = false;
