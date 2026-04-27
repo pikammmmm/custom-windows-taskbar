@@ -136,22 +136,25 @@ pub fn recent_files(limit: usize) -> Result<Vec<RecentFile>> {
     Ok(out)
 }
 
-/// Resolve a dropped path into (exe_path, display_name). Accepts:
-///   - `.exe` → returns the path verbatim with the file stem as the name
-///   - `.lnk` → resolves the shortcut's target via IShellLink
-///   - anything else → returns None (silently ignore non-launchables)
+/// Resolve a dropped path into (path, display_name). Accepts:
+///   - `.lnk` → resolves the shortcut's target so we pin the actual exe
+///   - any other existing file → pinned as-is, opened with the default
+///     handler when clicked (docs, scripts, archives, anything)
+/// Returns None for directories or paths that don't exist.
 pub fn resolve_drop(path: &Path) -> Option<(String, String)> {
-    ensure_com();
-    let ext = path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
+    if !path.exists() { return None; }
     let display = path.file_stem().and_then(|s| s.to_str())?.to_string();
-    match ext.as_deref() {
-        Some("exe") => Some((path.to_string_lossy().to_string(), display)),
-        Some("lnk") => {
-            let target = resolve_lnk(path).ok()?;
-            if !Path::new(&target).is_file() { return None; }
-            Some((target, display))
-        }
-        _ => None,
+    let ext = path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
+    if ext.as_deref() == Some("lnk") {
+        ensure_com();
+        let target = resolve_lnk(path).ok()?;
+        if !Path::new(&target).is_file() { return None; }
+        return Some((target, display));
+    }
+    if path.is_file() {
+        Some((path.to_string_lossy().to_string(), display))
+    } else {
+        None
     }
 }
 
