@@ -29,10 +29,23 @@ pub fn clear_menu_shown_at() {
 
 #[tauri::command]
 pub fn launch(path: String) -> Result<(), String> {
-    Command::new(&path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("launch failed: {e}"))
+    // .exe runs directly via CreateProcess; everything else (docs, scripts,
+    // .lnk shortcuts, archives, …) goes through the shell so the default
+    // file handler is used. Without the split, double-clicking a pinned
+    // .docx would fail because Word isn't on $PATH.
+    let is_exe = path.to_lowercase().ends_with(".exe");
+    if is_exe {
+        Command::new(&path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("launch failed: {e}"))
+    } else {
+        Command::new("cmd")
+            .args(["/c", "start", "", &path])
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("launch failed: {e}"))
+    }
 }
 
 /// Open a Windows shell URI (`ms-settings:`, `https://`, etc) via cmd /c

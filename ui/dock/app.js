@@ -1,6 +1,40 @@
-const { invoke } = window.__TAURI__.core;
+const { invoke, Channel } = window.__TAURI__.core;
 const { listen, emit } = window.__TAURI__.event;
 const { getCurrentWindow } = window.__TAURI__.window;
+
+// 1×1 transparent PNG that the OS uses as the drag follow-image. The drop
+// target paints its own preview anyway, so a no-op image is fine.
+const TRANSPARENT_PNG_B64 =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+/// Attach a native (OLE) drag source to `el`. Triggers after the cursor
+/// moves >5px from mousedown so a normal click on the same element still
+/// fires its click handler. Used so dock icons + stash rows can be dragged
+/// out into Explorer / Discord / email attachments / etc.
+function attachNativeDragOut(el, paths) {
+  let down = null;
+  el.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    down = { x: ev.screenX, y: ev.screenY };
+  });
+  el.addEventListener('mousemove', (ev) => {
+    if (!down) return;
+    const dx = Math.abs(ev.screenX - down.x);
+    const dy = Math.abs(ev.screenY - down.y);
+    if (dx > 5 || dy > 5) {
+      down = null;
+      const onEvent = new Channel();
+      invoke('plugin:drag|start_drag', {
+        item: paths,
+        image: TRANSPARENT_PNG_B64,
+        onEvent,
+      }).catch((err) => console.error('start_drag failed', err));
+    }
+  });
+  el.addEventListener('mouseup',    () => { down = null; });
+  el.addEventListener('mouseleave', () => { down = null; });
+  el.addEventListener('dragstart',  (ev) => ev.preventDefault());
+}
 
 const left = document.getElementById('dock-left');
 const center = document.getElementById('dock-center');
@@ -156,6 +190,9 @@ async function iconNode({ exe, label, running, animateLaunch }) {
     e.preventDefault();
     onRightClick(exe, label, running, e);
   });
+  // Dragging the icon out hands the resolved exe / file path to the OS so
+  // the user can drop it on the desktop, an email attachment field, etc.
+  attachNativeDragOut(node, [exe]);
   return node;
 }
 
