@@ -25,6 +25,14 @@ pub fn settings_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("settings.json"))
 }
 
+/// Set of taskbar-pin paths we've already imported into the dock — used so
+/// the live sync only adds *newly* pinned items. Without this, unpinning
+/// from the dock gets reverted on the next sync because the entry still
+/// exists in the Windows taskbar pin folder.
+pub fn imported_taskbar_path() -> Result<PathBuf> {
+    Ok(data_dir()?.join("imported_taskbar.json"))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
