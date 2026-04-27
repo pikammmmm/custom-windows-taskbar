@@ -1,5 +1,5 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
-use crate::widgets::{audio, media, start_menu};
+use crate::widgets::{audio, media, start_menu, warp};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -292,6 +292,11 @@ pub fn list_audio_devices() -> Result<Vec<audio::AudioDevice>, String> {
 #[tauri::command]
 pub fn set_default_audio_device(id: String) -> Result<(), String> {
     audio::set_default_device(&id)
+}
+
+#[tauri::command]
+pub fn warp_toggle(connect: bool) -> Result<(), String> {
+    warp::toggle(connect)
 }
 
 #[tauri::command]

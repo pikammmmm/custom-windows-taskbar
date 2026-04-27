@@ -155,6 +155,7 @@ fn main() {
             commands::set_mute,
             commands::list_audio_devices,
             commands::set_default_audio_device,
+            commands::warp_toggle,
             commands::media_toggle_play,
             commands::media_next,
             commands::media_prev,

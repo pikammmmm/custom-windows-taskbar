@@ -30,6 +30,7 @@ const el = {
   wxIcon: document.getElementById('wx-icon'),
   wxTemp: document.getElementById('wx-temp'),
   wxCond: document.getElementById('wx-cond'),
+  warpBtn: document.getElementById('warp-btn'),
 };
 
 let prevOnline = null;
@@ -131,6 +132,18 @@ function render() {
     setBarLevel(el.cpuBar, ss.cpu_percent);
     el.ramVal.textContent = `${ss.mem_percent}%`;
     setBarLevel(el.ramBar, ss.mem_percent);
+  }
+
+  // Cloudflare WARP — colour the button + tooltip from the latest probe.
+  const wp = lastSnapshot.warp;
+  if (wp) {
+    const status = !wp.installed ? 'unknown' : (wp.connected ? 'connected' : 'disconnected');
+    el.warpBtn.dataset.status = status;
+    el.warpBtn.title = !wp.installed
+      ? 'Cloudflare WARP — not installed'
+      : wp.connected
+        ? 'Cloudflare WARP — Connected (click to disconnect)'
+        : 'Cloudflare WARP — Disconnected (click to connect)';
   }
 
   // Weather
@@ -341,6 +354,20 @@ document.querySelectorAll('.quick-btn').forEach(btn => {
     else if (launchPath) invoke('launch', { path: launchPath }).catch(() => {});
     else if (action && QUICK_ACTIONS[action]) QUICK_ACTIONS[action]().catch(() => {});
   });
+});
+
+// WARP button: left-click toggles connection, right-click opens the app.
+// Toggle is driven by the most recent snapshot rather than a re-poll so
+// the user gets instant feedback even if warp-cli takes a moment.
+el.warpBtn.addEventListener('click', () => {
+  const connected = lastSnapshot?.warp?.connected ?? false;
+  invoke('warp_toggle', { connect: !connected }).catch(() => {});
+});
+el.warpBtn.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  invoke('launch', {
+    path: 'C:\\Program Files\\Cloudflare\\Cloudflare WARP\\Cloudflare WARP.exe',
+  }).catch(() => {});
 });
 
 el.mediaPlay.addEventListener('click', () => invoke('media_toggle_play').catch(() => {}));
