@@ -21,24 +21,36 @@ mod keyhook;
 mod app_actions;
 mod stash;
 
-/// Watch the Windows-taskbar pin folder and merge new entries into our
-/// pinned.json. Polling is fine here — pins change rarely (a few times
-/// a day at most) so a 5s tick is invisible. notify watchers on the
-/// IE Quick Launch folder are flaky on Win11 because Explorer rewrites
-/// the directory atomically.
+/// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
+/// into our pinned.json. Critical: only items the user has pinned to the
+/// taskbar SINCE the last seen sync are added — anything we've already
+/// imported once stays out of the way, so unpinning a dock icon doesn't
+/// get undone the next tick. The set of previously-imported paths is
+/// persisted to imported_taskbar.json so it also survives restarts.
 fn sync_taskbar_pins_loop(
     tb_dir: std::path::PathBuf,
     pinned_path: std::path::PathBuf,
     pinned_state: pinned::PinnedHandle,
 ) {
+    use std::collections::HashSet;
     use std::time::Duration;
+
+    let imported_path = match config::imported_taskbar_path() {
+        Ok(p) => p,
+        Err(e) => { tracing::warn!("imported_taskbar_path failed: {e}"); return; }
+    };
+    // Initialise from disk so a fresh launch doesn't re-pin everything we
+    // already imported on the last run.
+    let mut imported: HashSet<String> = std::fs::read_to_string(&imported_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .map(|v| v.into_iter().map(|p| p.to_lowercase()).collect())
+        .unwrap_or_default();
+
     let mut last_count: usize = 0;
     loop {
         std::thread::sleep(Duration::from_secs(5));
         if !tb_dir.is_dir() { continue; }
-        // Cheap change detector: count of .lnk files. If it didn't change,
-        // skip the actual re-import work. Misses rename-in-place but those
-        // are rare and a missed sync just means the user has to relaunch.
         let count = std::fs::read_dir(&tb_dir)
             .map(|rd| rd.filter_map(|e| e.ok())
                 .filter(|e| e.path().extension()
@@ -53,7 +65,14 @@ fn sync_taskbar_pins_loop(
         let Ok(taskbar_pins) = import_pinned::read_taskbar_pins() else { continue };
         let mut guard = pinned_state.lock().unwrap();
         let mut changed = false;
+        let mut imported_changed = false;
         for tp in taskbar_pins {
+            let key = tp.path.to_lowercase();
+            // Already imported once → respect any later unpin from the dock.
+            if imported.contains(&key) { continue; }
+            imported.insert(key);
+            imported_changed = true;
+            // Don't double-add if it's somehow already in the dock list.
             if guard.iter().any(|p| p.path.eq_ignore_ascii_case(&tp.path)) {
                 continue;
             }
@@ -64,8 +83,13 @@ fn sync_taskbar_pins_loop(
             if let Err(e) = pinned::save_to(&pinned_path, &guard) {
                 tracing::warn!("save pinned.json after taskbar sync failed: {e}");
             }
-            // No explicit emit — the file watcher above re-reads pinned.json
-            // and broadcasts pinned:changed, so the dock UI updates itself.
+        }
+        if imported_changed {
+            let list: Vec<String> = imported.iter().cloned().collect();
+            if let Err(e) = std::fs::write(&imported_path,
+                serde_json::to_string_pretty(&list).unwrap_or("[]".into())) {
+                tracing::warn!("save imported_taskbar.json failed: {e}");
+            }
         }
     }
 }
@@ -152,7 +176,9 @@ fn main() {
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
             // First-run migration: if pinned.json doesn't exist yet, seed it
-            // from the user's existing Windows-taskbar pins.
+            // from the user's existing Windows-taskbar pins. The same paths
+            // also seed imported_taskbar.json so the live sync respects any
+            // later unpin from the dock instead of re-adding them.
             if !pinned_path.exists() {
                 match import_pinned::read_taskbar_pins() {
                     Ok(seed) if !seed.is_empty() => {
@@ -160,6 +186,12 @@ fn main() {
                             tracing::warn!("seed pinned.json failed: {e}");
                         } else {
                             tracing::info!("seeded {} pinned apps from Windows taskbar", seed.len());
+                        }
+                        if let Ok(imp_path) = config::imported_taskbar_path() {
+                            let lc: Vec<String> = seed.iter()
+                                .map(|p| p.path.to_lowercase()).collect();
+                            let _ = std::fs::write(&imp_path,
+                                serde_json::to_string_pretty(&lc).unwrap_or("[]".into()));
                         }
                     }
                     Ok(_) => tracing::info!("no Windows-taskbar pins to import"),
