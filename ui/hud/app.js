@@ -290,35 +290,19 @@ function attachNativeDragOut(el, paths) {
   el.addEventListener('dragstart', (ev) => ev.preventDefault());
 }
 
-// Tauri's window-scoped drag-drop event delivers OS file paths. We accept
-// only drops whose cursor position fell inside the dropzone's bounding box,
-// so the user can still drag elsewhere on the HUD without it stealing files.
-let stashOver = false;
-function pointInDropzone(p) {
-  if (!p) return false;
-  const r = stashDropzone.getBoundingClientRect();
-  // Tauri payload position is in physical pixels; convert with dpr.
-  const dpr = window.devicePixelRatio || 1;
-  const x = p.x / dpr;
-  const y = p.y / dpr;
-  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-}
+// Tauri's window-scoped drag-drop event delivers OS file paths. The HUD
+// has no other drop targets, so we just accept anywhere on the window —
+// trying to gate on dropzone-bounding-rect was racing scroll offsets and
+// dpr conversion and silently dropping otherwise-valid payloads.
 getCurrentWindow().onDragDropEvent((e) => {
   const p = e.payload;
-  if (p?.type === 'over') {
-    const over = pointInDropzone(p.position);
-    if (over !== stashOver) {
-      stashOver = over;
-      stashDropzone.classList.toggle('over', over);
-    }
+  if (p?.type === 'over' || p?.type === 'enter') {
+    stashDropzone.classList.add('over');
   } else if (p?.type === 'leave') {
-    stashOver = false;
     stashDropzone.classList.remove('over');
   } else if (p?.type === 'drop') {
-    const wasOver = pointInDropzone(p.position);
-    stashOver = false;
     stashDropzone.classList.remove('over');
-    if (wasOver && Array.isArray(p.paths) && p.paths.length > 0) {
+    if (Array.isArray(p.paths) && p.paths.length > 0) {
       invoke('stash_add', { paths: p.paths }).catch(() => {});
     }
   }
