@@ -234,7 +234,6 @@ function renderStash(entries) {
     const row = document.createElement('div');
     row.className = 'stash-item';
     row.title = e.path;
-    row.draggable = true;
 
     const name = document.createElement('span');
     name.className = 'stash-name';
@@ -249,25 +248,46 @@ function renderStash(entries) {
       invoke('stash_remove', { path: e.path }).catch(() => {});
     });
 
-    // Initiate a real OS drag via tauri-plugin-drag. Calling the plugin
-    // command synchronously inside dragstart hands the active drag to the
-    // OS so it lands as a real file at whatever the user drops on.
-    row.addEventListener('dragstart', (ev) => {
-      // Suppress the browser's default text drag — we replace it with
-      // the native one. Without this both run and the OS drop is dropped.
-      ev.preventDefault();
-      const onEvent = new Channel();
-      invoke('plugin:drag|start_drag', {
-        item: [e.path],
-        image: TRANSPARENT_PNG_B64,
-        onEvent,
-      }).catch((err) => console.error('start_drag failed', err));
-    });
+    attachNativeDragOut(row, [e.path]);
 
     row.appendChild(name);
     row.appendChild(rm);
     stashList.appendChild(row);
   }
+}
+
+// Wire mousedown-driven OS drag. The browser's HTML5 dragstart event
+// fights with `tauri-plugin-drag`'s DoDragDrop call (both want to own the
+// cursor), so we trigger the native drag manually after a small movement
+// threshold — that lets normal clicks still fire on the row.
+function attachNativeDragOut(el, paths) {
+  let down = null;
+  el.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    down = { x: ev.screenX, y: ev.screenY };
+  });
+  el.addEventListener('mousemove', (ev) => {
+    if (!down) return;
+    const dx = Math.abs(ev.screenX - down.x);
+    const dy = Math.abs(ev.screenY - down.y);
+    if (dx > 5 || dy > 5) {
+      const target = down;
+      down = null;
+      const onEvent = new Channel();
+      invoke('plugin:drag|start_drag', {
+        item: paths,
+        image: TRANSPARENT_PNG_B64,
+        onEvent,
+      }).catch((err) => console.error('start_drag failed', err));
+      // Mark unused so target isn't a dead binding warning if something
+      // else reads it later for debugging.
+      void target;
+    }
+  });
+  el.addEventListener('mouseup',   () => { down = null; });
+  el.addEventListener('mouseleave',() => { down = null; });
+  // Cancel browser's default text/element drag preview entirely.
+  el.addEventListener('dragstart', (ev) => ev.preventDefault());
 }
 
 // Tauri's window-scoped drag-drop event delivers OS file paths. We accept
