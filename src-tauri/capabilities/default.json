@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability set for dock and hud windows",
-  "windows": ["dock", "hud"],
+  "description": "Capability set for all glassbar windows",
+  "windows": ["dock", "hud", "menu", "spotlight"],
   "permissions": [
     "core:default",
     "core:window:allow-outer-position",
@@ -12,6 +12,7 @@
     "core:window:allow-outer-size",
     "core:window:allow-start-dragging",
     "core:event:default",
-    "core:webview:default"
+    "core:webview:default",
+    "drag:default"
   ]
 }
