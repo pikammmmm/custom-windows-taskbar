@@ -1,6 +1,7 @@
-.superpowers/
+# Build artifacts
 target/
-src-tauri/target/
-src-tauri/gen/
-node_modules/
-.DS_Store
+
+# Temporary screenshots in repo root
+/full_now.png
+/top_strip.png
+*.png.tmp
