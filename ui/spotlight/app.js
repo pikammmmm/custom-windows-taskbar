@@ -90,8 +90,26 @@ async function render() {
     meta.appendChild(nameRow);
     meta.appendChild(path);
 
+    const pin = document.createElement('button');
+    pin.className = 'pin-btn';
+    pin.title = 'Pin to dock';
+    pin.innerHTML = `
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>`;
+    pin.addEventListener('click', (e) => {
+      // Don't bubble to the row's launch handler — pinning shouldn't also
+      // open the app. pin_dropped accepts any path and resolves .lnk → exe
+      // so it works for both apps and files.
+      e.stopPropagation();
+      invoke('pin_dropped', { paths: [r.path] }).catch(() => {});
+      pin.classList.add('pinned');
+    });
+
     li.appendChild(icon);
     li.appendChild(meta);
+    li.appendChild(pin);
     li.addEventListener('click', () => launch(i));
     list.appendChild(li);
     return { li, icon, name: r.name };

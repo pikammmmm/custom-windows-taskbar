@@ -141,6 +141,33 @@
   margin-top: 2px;
 }
 .spotlight-row:hover { background: rgba(255, 255, 255, 0.08); }
+
+.spotlight-row .pin-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(180, 215, 255, 0.85);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+.spotlight-row:hover .pin-btn,
+.spotlight-row.selected .pin-btn { opacity: 1; }
+.spotlight-row .pin-btn:hover {
+  background: rgba(92, 182, 255, 0.28);
+  color: #fff;
+}
+.spotlight-row .pin-btn.pinned {
+  background: rgba(92, 182, 255, 0.40);
+  color: #fff;
+  opacity: 1;
+}
 .spotlight-row.selected {
   background: linear-gradient(90deg, rgba(92, 182, 255, 0.28), rgba(92, 182, 255, 0.10));
   box-shadow:
