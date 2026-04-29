@@ -1,5 +1,5 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
-use crate::widgets::{audio, media, start_menu, warp};
+use crate::widgets::{audio, files, media, start_menu, warp};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -176,9 +176,30 @@ pub fn stash_clear(
     Ok(())
 }
 
+/// Unified spotlight result — apps from the Start Menu index plus files
+/// from the user's common folders. The `kind` field lets the UI render a
+/// small label (App/File) without needing to inspect the path.
+#[derive(Serialize)]
+pub struct LauncherEntry {
+    pub kind: &'static str,
+    pub name: String,
+    pub path: String,
+}
+
 #[tauri::command]
-pub fn search_apps(query: String) -> Vec<start_menu::AppEntry> {
-    start_menu::search(&query, 12)
+pub fn search_apps(query: String) -> Vec<LauncherEntry> {
+    let mut out: Vec<LauncherEntry> = Vec::new();
+    for a in start_menu::search(&query, 8) {
+        out.push(LauncherEntry { kind: "app", name: a.name, path: a.path });
+    }
+    // Files only when the user has typed something — an empty query would
+    // dump tens of thousands of indexed paths into the list.
+    if !query.trim().is_empty() {
+        for f in files::search(&query, 8) {
+            out.push(LauncherEntry { kind: "file", name: f.name, path: f.path });
+        }
+    }
+    out
 }
 
 #[tauri::command]
@@ -203,6 +224,11 @@ pub fn show_spotlight(app: AppHandle) -> Result<(), String> {
     win.show().map_err(|e| e.to_string())?;
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
     let _ = win.set_focus();
+    if let Ok(hwnd) = win.hwnd() {
+        let h = hwnd.0 as isize;
+        crate::dwm::strip_decorations(h);
+        crate::dwm::suppress_nc_rendering(h);
+    }
     let _ = app.emit_to("spotlight", "spotlight:show", ());
     Ok(())
 }
@@ -490,6 +516,14 @@ pub fn show_menu(app: AppHandle, args: ShowMenuArgs) -> Result<(), String> {
     let _ = app.emit_to("menu", "menu:items", args.items);
     win.show().map_err(|e| e.to_string())?;
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    // Re-strip after show — Tauri occasionally re-applies WS_CAPTION between
+    // hide() and show() on Win11, which would flash min/max/close buttons
+    // before our paint lands.
+    if let Ok(hwnd) = win.hwnd() {
+        let h = hwnd.0 as isize;
+        crate::dwm::strip_decorations(h);
+        crate::dwm::suppress_nc_rendering(h);
+    }
     // Force the menu to take focus — Tauri's show() doesn't always activate
     // a topmost window that was previously hidden, and the auto-dismiss
     // poller in dock_autohide needs the menu to be the foreground at least

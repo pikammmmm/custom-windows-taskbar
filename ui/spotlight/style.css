@@ -109,12 +109,28 @@
   display: flex;
   flex-direction: column;
 }
+.spotlight-row .name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .spotlight-row .name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 500;
   letter-spacing: 0.1px;
+}
+.spotlight-row .kind-tag {
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(92, 182, 255, 0.18);
+  color: rgba(180, 215, 255, 0.95);
+  flex-shrink: 0;
 }
 .spotlight-row .path {
   font-size: 11px;

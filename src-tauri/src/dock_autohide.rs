@@ -232,5 +232,13 @@ fn show_spotlight(app: &AppHandle) {
     let _ = win.show();
     let _ = win.set_always_on_top(true);
     let _ = win.set_focus();
+    // Re-strip on every show — Tauri re-applies WS_CAPTION between hide and
+    // show on some Win11 builds, so the user briefly sees native min/max/close
+    // buttons before our paint lands without this.
+    if let Ok(hwnd) = win.hwnd() {
+        let h = hwnd.0 as isize;
+        dwm::strip_decorations(h);
+        dwm::suppress_nc_rendering(h);
+    }
     let _ = app.emit_to("spotlight", "spotlight:show", ());
 }
