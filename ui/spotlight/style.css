@@ -1,26 +1,36 @@
+/* Spotlight — Start-menu replacement. Inherits .glass-card from glass.css
+   and layers a heavier blur + softer top sheen so it feels deeper than the
+   dock without breaking the family resemblance. */
 .spotlight-card {
   display: flex;
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-  animation: spot-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: spot-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  background: linear-gradient(180deg, rgba(28, 32, 44, 0.40) 0%, rgba(8, 10, 14, 0.32) 100%);
+  backdrop-filter: blur(80px) saturate(200%);
+  -webkit-backdrop-filter: blur(80px) saturate(200%);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
 }
 @keyframes spot-in {
-  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
   to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
 .spotlight-input-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .spotlight-glyph {
-  font-size: 20px;
+  font-size: 22px;
   color: var(--glass-fg-dim);
-  width: 22px;
+  width: 24px;
   text-align: center;
 }
 #q {
@@ -30,41 +40,81 @@
   outline: none;
   font: inherit;
   color: var(--glass-fg);
-  font-size: 18px;
+  font-size: 19px;
   caret-color: #5cb6ff;
 }
 #q::placeholder { color: var(--glass-fg-dim); }
+.spotlight-hint {
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  white-space: nowrap;
+  letter-spacing: 0.4px;
+}
 
 .spotlight-results {
   list-style: none;
   margin: 0;
-  padding: 6px;
+  padding: 8px;
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.18) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 .spotlight-results::-webkit-scrollbar { width: 6px; }
 .spotlight-results::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.18);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 3px;
 }
 
 .spotlight-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
+  gap: 14px;
+  padding: 9px 12px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 14px;
-  transition: background 100ms ease;
+  transition: background 110ms ease, transform 110ms ease, box-shadow 110ms ease;
+}
+.spotlight-row .icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.spotlight-row .icon img {
+  width: 28px;
+  height: 28px;
+  -webkit-user-drag: none;
+}
+.spotlight-row .icon-fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+}
+.spotlight-row .meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .spotlight-row .name {
-  flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 500;
+  letter-spacing: 0.1px;
 }
 .spotlight-row .path {
   font-size: 11px;
@@ -72,15 +122,18 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 280px;
+  margin-top: 2px;
 }
+.spotlight-row:hover { background: rgba(255, 255, 255, 0.08); }
 .spotlight-row.selected {
-  background: rgba(92, 182, 255, 0.20);
+  background: linear-gradient(90deg, rgba(92, 182, 255, 0.28), rgba(92, 182, 255, 0.10));
+  box-shadow:
+    0 0 0 1px rgba(92, 182, 255, 0.40) inset,
+    0 6px 22px rgba(92, 182, 255, 0.18);
 }
-.spotlight-row:hover { background: rgba(255,255,255,0.10); }
 
 .spotlight-empty {
-  padding: 14px 18px;
+  padding: 24px 22px;
   font-size: 13px;
   color: var(--glass-fg-dim);
   text-align: center;
