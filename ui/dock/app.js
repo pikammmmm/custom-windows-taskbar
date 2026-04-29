@@ -314,11 +314,20 @@ function makeFallback(label) {
 function makeStartButton() {
   const node = document.createElement('div');
   node.className = 'dock-icon start-button';
+  // Glass tile with a magnifier inside — signals "launcher" (this opens the
+  // spotlight) without being yet another Windows Start riff. Stroke-only so
+  // the dock's hover/blur effects show through cleanly.
   node.innerHTML = `
-    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-      <path fill="#5cb6ff" d="M3 5.5 11 4.4v7.1H3zM12 4.3 21 3v8.5h-9zM3 12.5h8v7.1L3 18.5zM12 12.5h9V21l-9-1.3z"/>
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="5"
+            fill="rgba(92, 182, 255, 0.10)"
+            stroke="rgba(180, 215, 255, 0.85)" stroke-width="1.5"/>
+      <circle cx="11" cy="11" r="3.6" fill="none"
+              stroke="#5cb6ff" stroke-width="1.7"/>
+      <line x1="13.6" y1="13.6" x2="16.5" y2="16.5"
+            stroke="#5cb6ff" stroke-width="1.8" stroke-linecap="round"/>
     </svg>
-    <div class="tooltip">Start</div>
+    <div class="tooltip">Open launcher</div>
   `;
   node.addEventListener('click', (e) => {
     e.stopPropagation();

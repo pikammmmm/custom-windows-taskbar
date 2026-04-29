@@ -97,15 +97,40 @@ pub fn search(query: &str, limit: usize) -> Vec<AppEntry> {
     scored.into_iter().take(limit).map(|(_, e)| e.clone()).collect()
 }
 
-/// Score how well `name` matches `q`. None = no match.
-///   3 = name starts with q
-///   2 = some word in name starts with q
-///   1 = q appears anywhere in name
-fn score(q: &str, name: &str) -> Option<i32> {
-    if name.starts_with(q) { return Some(3); }
+/// Score how well `name` matches `q`. None = no match. Higher = better.
+///   5 = name starts with q                               (e.g. "chr" → "chrome")
+///   4 = q is exactly the acronym of name's words         (e.g. "vsc" → "visual studio code")
+///   3 = q is a prefix of the acronym, OR a word-start    (e.g. "vs"  → "visual studio code")
+///   2 = q appears anywhere in name                       (e.g. "stud" → "visual studio code")
+///   1 = q is a subsequence of name (fuzzy fallback)      (e.g. "vsco" → "visual studio code")
+pub fn score(q: &str, name: &str) -> Option<i32> {
+    if name.starts_with(q) { return Some(5); }
+    let acronym: String = name
+        .split(|c: char| !c.is_alphanumeric())
+        .filter_map(|w| w.chars().next())
+        .collect();
+    if acronym == q { return Some(4); }
+    if !q.is_empty() && acronym.starts_with(q) { return Some(3); }
     for word in name.split(|c: char| !c.is_alphanumeric()) {
-        if word.starts_with(q) { return Some(2); }
+        if word.starts_with(q) { return Some(3); }
     }
-    if name.contains(q) { return Some(1); }
+    if name.contains(q) { return Some(2); }
+    if is_subsequence(q, name) { return Some(1); }
     None
+}
+
+/// True iff every char of `q` appears in `name` in order (not necessarily
+/// contiguous). Cheap O(n) walk.
+pub fn is_subsequence(q: &str, name: &str) -> bool {
+    let mut q_chars = q.chars();
+    let Some(mut target) = q_chars.next() else { return true };
+    for c in name.chars() {
+        if c == target {
+            match q_chars.next() {
+                Some(next) => target = next,
+                None => return true,
+            }
+        }
+    }
+    false
 }

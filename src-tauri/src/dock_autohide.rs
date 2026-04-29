@@ -114,13 +114,19 @@ fn run(app: AppHandle) {
             show_spotlight(&app);
         }
 
-        // Win-key tap → glassy launcher. Replaces both Windows' Start menu
-        // (suppressed by the keyhook) and the previous dock-toggle, so the
-        // user gets a single consistent launcher whether they hit Win or
-        // click the Start button on the dock. The dock still auto-shows on
-        // cursor-bottom and toggles via the HUD button.
+        // Win-key tap → toggle dock visibility. The Start button on the
+        // dock is the dedicated launcher entry point, so Win is freed up
+        // for "show me the dock" — the gesture most people associate with
+        // the Win key.
         if keyhook::take_toggle_request() {
-            show_spotlight(&app);
+            if visible {
+                visible = false;
+                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
+            } else {
+                visible = true;
+                last_in_zone = Instant::now();
+                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
+            }
         }
 
         // Drive the slide animation if one is in progress.

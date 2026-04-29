@@ -101,10 +101,5 @@ pub fn search(query: &str, limit: usize) -> Vec<FileEntry> {
 /// Same scoring rubric as start_menu::score so apps and files rank
 /// consistently when interleaved in spotlight results.
 fn score(q: &str, name: &str) -> Option<i32> {
-    if name.starts_with(q) { return Some(3); }
-    for word in name.split(|c: char| !c.is_alphanumeric()) {
-        if word.starts_with(q) { return Some(2); }
-    }
-    if name.contains(q) { return Some(1); }
-    None
+    crate::widgets::start_menu::score(q, name)
 }

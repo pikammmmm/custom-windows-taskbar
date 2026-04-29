@@ -99,17 +99,14 @@ function makeFallback(name) {
   return span;
 }
 
-function renderRow({ label, glyph, action, args, danger, windowRow }) {
+function renderRow({ label, action, args, danger, windowRow }) {
   const row = document.createElement('div');
   row.className = 'menu-item';
   if (danger) row.classList.add('danger');
   if (windowRow) row.classList.add('window-row');
-  if (glyph) {
-    const g = document.createElement('span');
-    g.className = 'glyph';
-    g.textContent = glyph;
-    row.appendChild(g);
-  }
+  // Glyphs were emoji-noisy and made the menu feel cluttered. Pure text
+  // rows lean into the dock's minimal aesthetic; the row's accent colour
+  // (blue for window-row, red for danger) carries enough signal.
   const lab = document.createElement('span');
   lab.className = 'label';
   lab.textContent = label;
