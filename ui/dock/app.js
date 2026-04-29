@@ -512,10 +512,10 @@ async function onRightClick(exe, label, running, event) {
     glyph: isPinned ? '✕' : '📌',
     label: isPinned ? 'Unpin from dock' : 'Pin to dock',
     action: isPinned ? 'unpin_app' : 'pin_app',
-    // pin_app's Rust signature takes `display_name` (snake_case). Tauri 2's
-    // arg deserializer matches Rust parameter names exactly — sending
-    // `displayName` here silently fails the call and the pin never lands.
-    args: isPinned ? { path: exe } : { path: exe, display_name: label },
+    // Tauri 2 deserializes JS args as camelCase and renames to snake_case
+    // for Rust params — so `displayName` here lands as `display_name` in
+    // pin_app's signature. Sending snake_case from JS does NOT match.
+    args: isPinned ? { path: exe } : { path: exe, displayName: label },
   });
 
   if (running && running.windows.length > 0) {
