@@ -139,6 +139,7 @@ fn main() {
             commands::get_icon,
             commands::pin_app,
             commands::pin_dropped,
+            commands::set_pinned_order,
             commands::recent_files,
             commands::stash_list,
             commands::stash_add,

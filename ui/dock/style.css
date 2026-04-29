@@ -105,6 +105,27 @@ body.drop-active .glass-card {
 .dock-icon.just-added {
   animation: dock-fadein 260ms ease-out;
 }
+
+/* Reorder drag — fade the source, draw a vertical insertion bar on whichever
+   side of the target the cursor is on. Anchored to the icon's position:relative. */
+.dock-icon.dragging {
+  opacity: 0.35;
+  transform: scale(0.92);
+}
+.dock-icon.drop-before::before,
+.dock-icon.drop-after::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: #5cb6ff;
+  box-shadow: 0 0 8px rgba(92, 182, 255, 0.85);
+  pointer-events: none;
+}
+.dock-icon.drop-before::before { left: -5px; }
+.dock-icon.drop-after::before  { right: -5px; }
 @keyframes dock-fadein {
   from { opacity: 0; transform: scale(0.8); }
   to   { opacity: 1; transform: scale(1); }

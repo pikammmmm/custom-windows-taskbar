@@ -30,6 +30,23 @@ pub fn save_to(path: &Path, apps: &[PinnedApp]) -> Result<()> {
     Ok(())
 }
 
+/// Reorder `list` in place to match `new_order_paths` (compared
+/// case-insensitively). Anything in `list` not mentioned in the new order
+/// is preserved at the tail in original relative order — the user only ever
+/// hands us a complete pin list from the DOM so this is just a safety net.
+pub fn reorder(list: &mut Vec<PinnedApp>, new_order_paths: &[String]) {
+    let mut remaining: Vec<PinnedApp> = std::mem::take(list);
+    for path in new_order_paths {
+        if let Some(pos) = remaining.iter()
+            .position(|p| p.path.eq_ignore_ascii_case(path))
+        {
+            list.push(remaining.remove(pos));
+        }
+    }
+    // Anything the caller forgot keeps its old place at the end.
+    list.extend(remaining);
+}
+
 pub type PinnedHandle = Arc<Mutex<Vec<PinnedApp>>>;
 
 pub fn watch(
