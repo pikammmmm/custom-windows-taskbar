@@ -5,6 +5,7 @@ pub mod audio;
 pub mod internet;
 pub mod sysstats;
 pub mod start_menu;
+pub mod files;
 pub mod battery;
 pub mod warp;
 pub mod weather;

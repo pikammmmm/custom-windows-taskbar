@@ -267,6 +267,10 @@ fn main() {
                 }
             });
 
+            // File index for spotlight — walks Desktop / Documents / etc.
+            // on its own background thread + slow refresh loop.
+            widgets::files::spawn();
+
             // Re-strip decorations after Tauri's late init has settled — on
             // some Win11 builds the framework re-applies WS_CAPTION between
             // window build and first paint, so stripping once at build time

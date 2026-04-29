@@ -72,13 +72,22 @@ async function render() {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
+    const nameRow = document.createElement('div');
+    nameRow.className = 'name-row';
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = r.name;
+    nameRow.appendChild(name);
+    if (r.kind === 'file') {
+      const tag = document.createElement('span');
+      tag.className = 'kind-tag';
+      tag.textContent = 'File';
+      nameRow.appendChild(tag);
+    }
     const path = document.createElement('span');
     path.className = 'path';
     path.textContent = r.path;
-    meta.appendChild(name);
+    meta.appendChild(nameRow);
     meta.appendChild(path);
 
     li.appendChild(icon);
