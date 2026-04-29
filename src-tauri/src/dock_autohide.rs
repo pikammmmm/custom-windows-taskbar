@@ -38,10 +38,6 @@ fn run(app: AppHandle) {
     let hidden_y = screen_h;
 
     let mut visible = true;
-    // True between Win-tap-to-show and the next Win-tap. While set, cursor-based
-    // auto-hide is suppressed so the dock stays put — matches the user's mental
-    // model of "tap Win to show, tap again to hide."
-    let mut win_pinned = false;
     let mut last_in_zone = Instant::now();
     let dock_hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     let hud_hwnd = app.get_webview_window("hud")
@@ -108,46 +104,23 @@ fn run(app: AppHandle) {
                     start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
                 }
             }
-        } else if visible && !win_pinned && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
+        } else if visible && last_in_zone.elapsed().as_millis() > HIDE_AFTER_MS {
             visible = false;
             start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
         }
 
         // Ctrl+Alt+Space — show the spotlight launcher.
         if keyhook::take_spotlight_request() {
-            let _ = app.emit("spotlight:hotkey", ());
-            // Inline call to show_spotlight via the same AppHandle.
-            if let Some(win) = app.get_webview_window("spotlight") {
-                if let Ok(Some(monitor)) = win.current_monitor() {
-                    let mw = monitor.size().width as i32;
-                    let mh = monitor.size().height as i32;
-                    let scale = monitor.scale_factor();
-                    let w = (560.0 * scale).round() as i32;
-                    let h = (440.0 * scale).round() as i32;
-                    let x = (mw - w) / 2;
-                    let y = (mh as f64 / 3.5) as i32;
-                    let _ = win.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
-                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-                    let _ = win.show();
-                    let _ = win.set_always_on_top(true);
-                    let _ = win.set_focus();
-                    let _ = app.emit_to("spotlight", "spotlight:show", ());
-                }
-            }
+            show_spotlight(&app);
         }
 
-        // Win-key tap toggles visibility regardless of cursor position.
+        // Win-key tap → glassy launcher. Replaces both Windows' Start menu
+        // (suppressed by the keyhook) and the previous dock-toggle, so the
+        // user gets a single consistent launcher whether they hit Win or
+        // click the Start button on the dock. The dock still auto-shows on
+        // cursor-bottom and toggles via the HUD button.
         if keyhook::take_toggle_request() {
-            if visible {
-                visible = false;
-                win_pinned = false;
-                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
-            } else {
-                visible = true;
-                win_pinned = true;
-                last_in_zone = Instant::now();
-                start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
-            }
+            show_spotlight(&app);
         }
 
         // Drive the slide animation if one is in progress.
@@ -236,4 +209,28 @@ fn ease_out_cubic(t: f64) -> f64 {
 
 fn lerp(a: i32, b: i32, t: f64) -> i32 {
     a + ((b - a) as f64 * t).round() as i32
+}
+
+/// Centre the spotlight on the current monitor, show it, and emit
+/// `spotlight:show` so its JS resets the input + refocuses. Shared by the
+/// Win-tap and Ctrl+Alt+Space paths so both produce identical behaviour.
+fn show_spotlight(app: &AppHandle) {
+    use tauri::{PhysicalPosition, PhysicalSize};
+    let _ = app.emit("spotlight:hotkey", ());
+    let Some(win) = app.get_webview_window("spotlight") else { return };
+    let Ok(Some(monitor)) = win.current_monitor() else { return };
+    let mw = monitor.size().width as i32;
+    let mh = monitor.size().height as i32;
+    let scale = monitor.scale_factor();
+    let w = (560.0 * scale).round() as i32;
+    let h = (440.0 * scale).round() as i32;
+    let x = (mw - w) / 2;
+    // ~28% from the top — leaves comfortable room for the result list.
+    let y = (mh as f64 / 3.5) as i32;
+    let _ = win.set_size(PhysicalSize::new(w as u32, h as u32));
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    let _ = win.show();
+    let _ = win.set_always_on_top(true);
+    let _ = win.set_focus();
+    let _ = app.emit_to("spotlight", "spotlight:show", ());
 }

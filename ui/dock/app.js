@@ -322,7 +322,9 @@ function makeStartButton() {
   `;
   node.addEventListener('click', (e) => {
     e.stopPropagation();
-    invoke('open_start_menu').catch(() => {});
+    // Show our glassy launcher instead of routing to Windows' Start menu
+    // (we still expose `open_start_menu` for the rare case anyone wants it).
+    invoke('show_spotlight').catch(() => {});
   });
   return node;
 }
