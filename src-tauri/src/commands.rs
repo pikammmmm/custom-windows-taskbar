@@ -100,6 +100,7 @@ pub fn pin_app(
     path: String,
     display_name: String,
     state: State<'_, pinned::PinnedHandle>,
+    app: AppHandle,
 ) -> Result<PinResult, String> {
     let mut guard = state.lock().unwrap();
     if guard.iter().any(|a| a.path.eq_ignore_ascii_case(&path)) {
@@ -108,6 +109,10 @@ pub fn pin_app(
     guard.push(pinned::PinnedApp { path, display_name, icon_path: None });
     let path_file = config::pinned_path().map_err(|e| e.to_string())?;
     pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
+    // Emit directly instead of waiting for the notify watcher — on some Win11
+    // setups self-writes don't always fire a usable Modify event, so the dock
+    // wouldn't see the new pin until the next external change.
+    let _ = app.emit("pinned:changed", &*guard);
     Ok(PinResult { pinned: guard.clone() })
 }
 
@@ -218,6 +223,7 @@ pub fn hide_spotlight(app: AppHandle) -> Result<(), String> {
 pub fn pin_dropped(
     paths: Vec<String>,
     state: State<'_, pinned::PinnedHandle>,
+    app: AppHandle,
 ) -> Result<PinResult, String> {
     let mut guard = state.lock().unwrap();
     let mut changed = false;
@@ -234,6 +240,7 @@ pub fn pin_dropped(
     if changed {
         let path_file = config::pinned_path().map_err(|e| e.to_string())?;
         pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
+        let _ = app.emit("pinned:changed", &*guard);
     }
     Ok(PinResult { pinned: guard.clone() })
 }
@@ -242,11 +249,31 @@ pub fn pin_dropped(
 pub fn unpin_app(
     path: String,
     state: State<'_, pinned::PinnedHandle>,
+    app: AppHandle,
 ) -> Result<PinResult, String> {
     let mut guard = state.lock().unwrap();
     guard.retain(|a| !a.path.eq_ignore_ascii_case(&path));
     let path_file = config::pinned_path().map_err(|e| e.to_string())?;
     pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
+    let _ = app.emit("pinned:changed", &*guard);
+    Ok(PinResult { pinned: guard.clone() })
+}
+
+/// Persist a new pinned-app order. The dock hands us the full list of
+/// paths in their post-drag-and-drop sequence; we permute the in-memory
+/// list to match, save, and broadcast `pinned:changed` so every listener
+/// (dock, HUD) re-renders.
+#[tauri::command]
+pub fn set_pinned_order(
+    paths: Vec<String>,
+    state: State<'_, pinned::PinnedHandle>,
+    app: AppHandle,
+) -> Result<PinResult, String> {
+    let mut guard = state.lock().unwrap();
+    pinned::reorder(&mut guard, &paths);
+    let path_file = config::pinned_path().map_err(|e| e.to_string())?;
+    pinned::save_to(&path_file, &guard).map_err(|e| e.to_string())?;
+    let _ = app.emit("pinned:changed", &*guard);
     Ok(PinResult { pinned: guard.clone() })
 }
 

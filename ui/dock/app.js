@@ -121,6 +121,7 @@ async function renderCenter() {
       label: p.display_name,
       running: runByExe.get(exe.toLowerCase()),
       animateLaunch: newlyLaunched.has(exe.toLowerCase()),
+      isPinned: true,
     });
     nodeByExe.set(exe.toLowerCase(), node);
     center.appendChild(node);
@@ -136,6 +137,7 @@ async function renderCenter() {
       label: exeName(a.exe_path),
       running: a,
       animateLaunch: newlyLaunched.has(a.exe_path.toLowerCase()),
+      isPinned: false,
     });
     nodeByExe.set(a.exe_path.toLowerCase(), node);
     center.appendChild(node);
@@ -144,7 +146,7 @@ async function renderCenter() {
   applyForegroundHighlight();
 }
 
-async function iconNode({ exe, label, running, animateLaunch }) {
+async function iconNode({ exe, label, running, animateLaunch, isPinned }) {
   const node = document.createElement('div');
   node.className = 'dock-icon';
   if (animateLaunch) node.classList.add('just-launched');
@@ -190,11 +192,100 @@ async function iconNode({ exe, label, running, animateLaunch }) {
     e.preventDefault();
     onRightClick(exe, label, running, e);
   });
-  // Dragging the icon out hands the resolved exe / file path to the OS so
-  // the user can drop it on the desktop, an email attachment field, etc.
-  attachNativeDragOut(node, [exe]);
+  // Pinned icons are reorderable via HTML5 drag — running-only "extras" are
+  // not, since their order is implicit (process appearance order). We drop
+  // the OLE drag-out path here: starting an OS drag races the reorder
+  // gesture and the dock's primary use is rearranging, not exporting paths.
+  if (isPinned) makeReorderable(node, exe);
   return node;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Reorder via HTML5 drag-and-drop. The dragged icon carries its exe path
+// in a custom MIME type so we can tell our own intra-dock drags apart from
+// arbitrary OS file drops (which still pin via onDragDropEvent).
+// ─────────────────────────────────────────────────────────────────────────
+const REORDER_MIME = 'application/x-glassbar-pin';
+
+function makeReorderable(node, exe) {
+  node.draggable = true;
+  node.addEventListener('dragstart', (ev) => {
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData(REORDER_MIME, exe.toLowerCase());
+    // Some browsers refuse to start a drag without text/plain set too.
+    ev.dataTransfer.setData('text/plain', exe);
+    node.classList.add('dragging');
+  });
+  node.addEventListener('dragend', () => {
+    node.classList.remove('dragging');
+    clearDropMarkers();
+  });
+}
+
+function clearDropMarkers() {
+  for (const n of center.querySelectorAll('.drop-before, .drop-after')) {
+    n.classList.remove('drop-before', 'drop-after');
+  }
+}
+
+/// True when the current drag carries our reorder payload. Reading the MIME
+/// type list during dragover lets us ignore arbitrary OS drags that happen
+/// to land on the dock — those are handled by Tauri's onDragDropEvent.
+function isReorderDrag(ev) {
+  const types = ev.dataTransfer?.types;
+  return !!types && Array.from(types).includes(REORDER_MIME);
+}
+
+center.addEventListener('dragover', (ev) => {
+  if (!isReorderDrag(ev)) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  const target = ev.target.closest('.dock-icon');
+  clearDropMarkers();
+  if (!target || !target.draggable) return;
+  const rect = target.getBoundingClientRect();
+  const before = ev.clientX < rect.left + rect.width / 2;
+  target.classList.add(before ? 'drop-before' : 'drop-after');
+});
+
+center.addEventListener('dragleave', (ev) => {
+  // Only clear when the drag actually exits the center container — child
+  // elements firing dragleave during nested traversal would otherwise
+  // strobe the indicator.
+  if (ev.target === center) clearDropMarkers();
+});
+
+center.addEventListener('drop', (ev) => {
+  if (!isReorderDrag(ev)) return;
+  ev.preventDefault();
+  const draggedExe = ev.dataTransfer.getData(REORDER_MIME);
+  const target = ev.target.closest('.dock-icon');
+  clearDropMarkers();
+  if (!draggedExe) return;
+
+  // Build the new order from the current pinned set, skipping the dragged
+  // exe and inserting it at the chosen position. We work off the
+  // authoritative `pinned` array (not the DOM) so dragging an extra by
+  // accident can't corrupt the order.
+  const currentPaths = pinned.map(p => p.path);
+  const filtered = currentPaths.filter(p => p.toLowerCase() !== draggedExe);
+  let insertIdx = filtered.length;
+  if (target && target.draggable) {
+    const targetExe = (target.dataset.exe || '').toLowerCase();
+    if (targetExe && targetExe !== draggedExe) {
+      const rect = target.getBoundingClientRect();
+      const before = ev.clientX < rect.left + rect.width / 2;
+      const idxInFiltered = filtered.findIndex(p => p.toLowerCase() === targetExe);
+      if (idxInFiltered >= 0) {
+        insertIdx = before ? idxInFiltered : idxInFiltered + 1;
+      }
+    }
+  }
+  const original = currentPaths.find(p => p.toLowerCase() === draggedExe);
+  if (!original) return;
+  const newOrder = [...filtered.slice(0, insertIdx), original, ...filtered.slice(insertIdx)];
+  invoke('set_pinned_order', { paths: newOrder }).catch(() => {});
+});
 
 const FALLBACK_PALETTE = [
   '#4f7cff', '#ef476f', '#06d6a0', '#ffd166',
