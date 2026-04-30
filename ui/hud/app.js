@@ -117,13 +117,9 @@ function renderClaudeUsage(u) {
   el.claudeValue.title = `${u.tokens_used.toLocaleString()} tokens · ${u.messages} messages`;
   el.claudeAccount.textContent = u.account || '';
   el.claudeAccount.title = u.account ? `Logged in as ${u.account}` : '';
-  // Absolute reset time so the user can compare directly against Claude.ai's
-  // "your messages reset at HH:MM" notice — easier to verify than a
-  // relative countdown.
-  const reset = new Date(u.block_reset * 1000);
-  const hh = String(reset.getHours()).padStart(2, '0');
-  const mm = String(reset.getMinutes()).padStart(2, '0');
-  el.claudeReset.textContent = `resets at ${hh}:${mm}`;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const remaining = Math.max(0, u.block_reset - nowSec);
+  el.claudeReset.textContent = `${fmtRemaining(remaining)} left`;
   setBarLevel(el.claudeBarFill, pct);
 }
 
