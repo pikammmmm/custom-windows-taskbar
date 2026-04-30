@@ -14,7 +14,7 @@ The application form asks for:
 | Field | What to put |
 |---|---|
 | Project name | `glassbar` |
-| Project URL | `https://github.com/pikammmmm/glassbar` |
+| Project URL | `https://github.com/pikammmmm/custom-windows-taskbar` |
 | License | `MIT` (the `LICENSE` file at the repo root) |
 | Description | "Glassy floating dock + HUD for Windows. Rust + Tauri 2 desktop app." |
 | Maintainer name | (your real name — they verify against GitHub) |
@@ -42,7 +42,7 @@ SignPath emails an invite to your organization on `app.signpath.io`. There:
 
 ## 3. Wire the IDs + token into GitHub
 
-Repo: `pikammmmm/glassbar` → **Settings → Secrets and variables → Actions**.
+Repo: `pikammmmm/custom-windows-taskbar` → **Settings → Secrets and variables → Actions**.
 
 **Variables** (clear-text, OK to share):
 
@@ -73,7 +73,7 @@ Two ways to fix:
 
 - **Run once:** `gh auth refresh -s workflow` and confirm in the browser.
   Subsequent `git push` works normally.
-- **Web UI:** open `pikammmmm/glassbar` → **Add file → Create new file** →
+- **Web UI:** open `pikammmmm/custom-windows-taskbar` → **Add file → Create new file** →
   paste path `.github/workflows/release.yml` → paste contents from your
   local file → commit. No scope needed.
 

@@ -2,7 +2,7 @@
 
 A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-hidden Windows taskbar.
 
-[![Latest release](https://img.shields.io/github/v/release/pikammmmm/glassbar?label=download)](https://github.com/pikammmmm/glassbar/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/pikammmmm/custom-windows-taskbar?label=download)](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest)
 
 ## Features
 
@@ -13,7 +13,7 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 ## Install
 
-Two options on the [Releases page](https://github.com/pikammmmm/glassbar/releases/latest):
+Two options on the [Releases page](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest):
 
 **Installer (recommended)** — `glassbar_<version>_x64_en-US.msi`
 1. Download and run the MSI.
@@ -32,7 +32,7 @@ Pick whichever is more convenient:
 
 - **MSI build** — Settings → Apps → Installed apps → glassbar → Uninstall.
   - Or run `uninstall.exe` from `Program Files\glassbar\` (it ships next to `glassbar.exe`). It hands off to `msiexec /x`, restores the Windows taskbar, removes autostart, and wipes user data + cache.
-- **Portable** — download `uninstall.exe` from the [Releases page](https://github.com/pikammmmm/glassbar/releases/latest) (or run the one already next to your portable `glassbar.exe`). It runs the same cleanup steps, then you delete `glassbar.exe` yourself.
+- **Portable** — download `uninstall.exe` from the [Releases page](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest) (or run the one already next to your portable `glassbar.exe`). It runs the same cleanup steps, then you delete `glassbar.exe` yourself.
 
 Either path also restores the standard Windows taskbar in case glassbar was killed without its exit handler running — that's the part you can't get back via "delete the file" alone.
 
