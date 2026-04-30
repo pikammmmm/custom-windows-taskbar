@@ -31,11 +31,6 @@ const el = {
   wxTemp: document.getElementById('wx-temp'),
   wxCond: document.getElementById('wx-cond'),
   warpBtn: document.getElementById('warp-btn'),
-  claudeBlock: document.getElementById('claude-block'),
-  claudeValue: document.getElementById('claude-value'),
-  claudeAccount: document.getElementById('claude-account'),
-  claudeReset: document.getElementById('claude-reset'),
-  claudeBarFill: document.getElementById('claude-bar-fill'),
   wxLoc: document.getElementById('wx-loc'),
 };
 
@@ -81,46 +76,6 @@ function setBarLevel(barEl, pct) {
   barEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
   barEl.classList.toggle('warn', pct >= 70 && pct < 90);
   barEl.classList.toggle('crit', pct >= 90);
-}
-
-/// Format a raw token count to "1.2M" / "847K" / "523" — keeps the HUD row
-/// terse so reset time and label still fit.
-function fmtTokens(n) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
-  if (n >= 1_000)     return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
-  return String(n);
-}
-
-/// Seconds → "3h 45m" / "12m" / "30s" — drops the larger unit when zero so
-/// the row never reads "0h 30m".
-function fmtRemaining(secs) {
-  if (secs <= 0) return 'reset';
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m`;
-  return `${secs}s`;
-}
-
-function renderClaudeUsage(u) {
-  if (!u || !u.block_start || !u.block_reset || u.tokens_used === 0) {
-    el.claudeBlock.hidden = true;
-    return;
-  }
-  el.claudeBlock.hidden = false;
-  const cap = u.estimated_cap || 1;
-  const pct = Math.min(999, (u.tokens_used / cap) * 100);
-  // Display as percentage rather than absolute tokens — keeps the row
-  // terse and lets the user gauge "how much of my block is gone" at a
-  // glance. Hover for the raw tokens.
-  el.claudeValue.textContent = `${pct.toFixed(pct < 10 ? 1 : 0)}%`;
-  el.claudeValue.title = `${u.tokens_used.toLocaleString()} tokens · ${u.messages} messages`;
-  el.claudeAccount.textContent = u.account || '';
-  el.claudeAccount.title = u.account ? `Logged in as ${u.account}` : '';
-  const nowSec = Math.floor(Date.now() / 1000);
-  const remaining = Math.max(0, u.block_reset - nowSec);
-  el.claudeReset.textContent = `${fmtRemaining(remaining)} left`;
-  setBarLevel(el.claudeBarFill, pct);
 }
 
 function render() {
@@ -191,9 +146,6 @@ function render() {
         ? 'Cloudflare WARP — Connected (click to disconnect)'
         : 'Cloudflare WARP — Disconnected (click to connect)';
   }
-
-  // Claude 5-hour usage
-  renderClaudeUsage(lastSnapshot.claude_usage);
 
   // Weather
   const w = lastSnapshot.weather;

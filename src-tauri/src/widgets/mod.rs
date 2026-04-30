@@ -10,4 +10,3 @@ pub mod uwp;
 pub mod battery;
 pub mod warp;
 pub mod weather;
-pub mod claude_usage;
