@@ -47,6 +47,32 @@ Pick whichever is more convenient:
 
 Either path also restores the standard Windows taskbar in case glassbar was killed without its exit handler running — that's the part you can't get back via "delete the file" alone.
 
+## Privacy
+
+glassbar does not collect, store, or transmit any user data — no analytics,
+no telemetry, no crash reporting, no phone-home, no account system.
+
+**What stays on your machine:**
+- Pinned apps, HUD position, stash files, autostart preference, weather city
+  selection — all in `%APPDATA%\glassbar\` (cleared by the uninstaller).
+- WebView2 cache for the dock / HUD UI in `%LOCALAPPDATA%\com.glassbar.app\`.
+- Spotlight's app index (built from your Start Menu and `Get-StartApps`)
+  and file index (your `Desktop` / `Documents` / `Downloads` / `Pictures` /
+  `Videos` / `Music` folders) — held in process memory only.
+- Claude Code transcripts under `%USERPROFILE%\.claude\projects\` are read,
+  but only locally — nothing leaves the machine.
+
+**The only outbound network requests:**
+- `api.open-meteo.com` and `geocoding-api.open-meteo.com` — fetches the
+  current weather for the city you select in HUD → Settings. Sends the
+  city name (geocoding) and lat/lon (forecast). No API key, no account.
+- `warp-cli` invocations talk to Cloudflare WARP locally; if WARP is
+  active, your traffic flows through Cloudflare's network, but glassbar
+  itself only toggles WARP — it doesn't transmit data through it.
+
+That's it. There is no first-party server, no third-party SDK, no
+identifier sent anywhere. Source is fully open under MIT for inspection.
+
 ## Build from source
 
 Requires Rust (stable). The WiX Toolset is needed for the MSI bundle and ships preinstalled on `windows-latest` GitHub runners.
