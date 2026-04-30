@@ -23,6 +23,19 @@
         </div>
       </section>
 
+      <!-- Claude 5-hour usage block: tokens used in the current rate-limit
+           window + how long until it resets. Hidden when idle. -->
+      <section class="block claude-block" id="claude-block" hidden>
+        <div class="claude-row">
+          <span class="claude-label">Claude</span>
+          <span class="claude-value" id="claude-value">--</span>
+          <span class="claude-reset" id="claude-reset"></span>
+        </div>
+        <div class="claude-bar">
+          <div class="claude-bar-fill" id="claude-bar-fill"></div>
+        </div>
+      </section>
+
       <!-- Stats chips: CPU, RAM, Battery -->
       <section class="chips-row">
         <div class="chip" id="cpu-chip" title="CPU usage">
