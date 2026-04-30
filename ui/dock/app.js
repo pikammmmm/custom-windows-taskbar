@@ -370,18 +370,20 @@ function makeFallback(label) {
 function makeStartButton() {
   const node = document.createElement('div');
   node.className = 'dock-icon start-button';
-  // Glass tile with a magnifier inside — signals "launcher" (this opens the
-  // spotlight) without being yet another Windows Start riff. Stroke-only so
-  // the dock's hover/blur effects show through cleanly.
+  // 3×3 dot grid — universal "app drawer / launcher" icon. Two-tone glow:
+  // brighter centre, dimmer corners, so it reads as a focused launcher
+  // even when the dock is mid-blur.
   node.innerHTML = `
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-      <rect x="3" y="3" width="18" height="18" rx="5"
-            fill="rgba(92, 182, 255, 0.10)"
-            stroke="rgba(180, 215, 255, 0.85)" stroke-width="1.5"/>
-      <circle cx="11" cy="11" r="3.6" fill="none"
-              stroke="#5cb6ff" stroke-width="1.7"/>
-      <line x1="13.6" y1="13.6" x2="16.5" y2="16.5"
-            stroke="#5cb6ff" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="6"  cy="6"  r="2" fill="rgba(180, 215, 255, 0.75)"/>
+      <circle cx="12" cy="6"  r="2" fill="rgba(180, 215, 255, 0.85)"/>
+      <circle cx="18" cy="6"  r="2" fill="rgba(180, 215, 255, 0.75)"/>
+      <circle cx="6"  cy="12" r="2" fill="rgba(180, 215, 255, 0.85)"/>
+      <circle cx="12" cy="12" r="2.2" fill="#5cb6ff"/>
+      <circle cx="18" cy="12" r="2" fill="rgba(180, 215, 255, 0.85)"/>
+      <circle cx="6"  cy="18" r="2" fill="rgba(180, 215, 255, 0.75)"/>
+      <circle cx="12" cy="18" r="2" fill="rgba(180, 215, 255, 0.85)"/>
+      <circle cx="18" cy="18" r="2" fill="rgba(180, 215, 255, 0.75)"/>
     </svg>
     <div class="tooltip">Open launcher</div>
   `;
