@@ -183,8 +183,16 @@ fn run(app: AppHandle) {
         // when WS_CAPTION isn't set, so polling at 60Hz catches the OS
         // re-asserting it within one frame instead of up to TOPMOST_REASSERT_MS
         // later (which is what caused the random white bar at the top of the HUD).
-        if dock_hwnd != 0 { dwm::strip_decorations(dock_hwnd); }
-        if hud_hwnd != 0 { dwm::strip_decorations(hud_hwnd); }
+        // Also re-suppress NC rendering so the Win11 focus-border accent
+        // (white stroke on click/activate) stays disabled.
+        if dock_hwnd != 0 {
+            dwm::strip_decorations(dock_hwnd);
+            dwm::suppress_nc_rendering(dock_hwnd);
+        }
+        if hud_hwnd != 0 {
+            dwm::strip_decorations(hud_hwnd);
+            dwm::suppress_nc_rendering(hud_hwnd);
+        }
 
         // Re-assert topmost on a slower cadence — this one isn't a no-op so we
         // don't want it 60×/sec.

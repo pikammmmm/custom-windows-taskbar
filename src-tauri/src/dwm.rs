@@ -1,9 +1,15 @@
 use windows::Win32::Foundation::{BOOL, COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{
-    DwmSetWindowAttribute, DWMNCRP_DISABLED,
+    DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWINDOWATTRIBUTE,
     DWMWA_NCRENDERING_POLICY, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMNCRENDERINGPOLICY, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
 };
+
+/// Win11-only: the magic value that tells DWM to suppress the focus-border
+/// accent stroke entirely. The native enum constant isn't exported by the
+/// version of `windows` we use, so we pass the raw u32.
+const DWMWA_BORDER_COLOR: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(34);
+const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
 use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos,
@@ -138,6 +144,17 @@ pub fn suppress_nc_rendering(hwnd: isize) {
             DWMWA_USE_IMMERSIVE_DARK_MODE,
             &dark as *const BOOL as *const _,
             std::mem::size_of::<BOOL>() as u32,
+        );
+        // Kill the Win11 focus-border accent — that's the white stroke the
+        // user sees flash when the window receives a click. COLOR_NONE is
+        // the documented sentinel that tells DWM "draw no border at all".
+        // No-op on Win10 (silently ignored).
+        let none = DWMWA_COLOR_NONE;
+        let _ = DwmSetWindowAttribute(
+            h,
+            DWMWA_BORDER_COLOR,
+            &none as *const u32 as *const _,
+            std::mem::size_of::<u32>() as u32,
         );
     }
 }

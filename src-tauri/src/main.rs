@@ -259,17 +259,10 @@ fn main() {
             // (chord support preserved — Win+R, Win+E, etc still work).
             keyhook::spawn();
 
-            // Build the spotlight app index off the main thread — walking
-            // both Start Menu trees and resolving every .lnk takes a beat
-            // on a fresh machine but never blocks UI startup.
-            std::thread::spawn(|| {
-                if let Err(e) = widgets::start_menu::build() {
-                    tracing::warn!("start_menu index build failed: {e}");
-                }
-            });
-
-            // File index for spotlight — walks Desktop / Documents / etc.
-            // on its own background thread + slow refresh loop.
+            // Spotlight indexes — both run on their own background threads
+            // and refresh on a slow loop so newly installed apps / saved
+            // files show up without a glassbar restart.
+            widgets::start_menu::spawn();
             widgets::files::spawn();
 
             // Re-strip decorations after Tauri's late init has settled — on
