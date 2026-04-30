@@ -126,7 +126,7 @@ pub fn show_properties(path: &str) -> Result<()> {
     invoke_shell_verb(path, "properties")
 }
 
-fn invoke_shell_verb(path: &str, verb: &str) -> Result<()> {
+pub fn invoke_shell_verb(path: &str, verb: &str) -> Result<()> {
     let path_w: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
     let verb_w: Vec<u16> = verb.encode_utf16().chain(std::iter::once(0)).collect();
     let mut info = SHELLEXECUTEINFOW {

@@ -42,9 +42,11 @@ pub fn launch(path: String) -> Result<(), String> {
             .map_err(|e| format!("launch failed: {e}"));
     }
     // .exe runs directly via CreateProcess; everything else (docs, scripts,
-    // .lnk shortcuts, archives, …) goes through the shell so the default
-    // file handler is used. Without the split, double-clicking a pinned
-    // .docx would fail because Word isn't on $PATH.
+    // .lnk shortcuts, archives, web URLs, …) goes through ShellExecuteW
+    // with the "open" verb — same code path as double-clicking the file in
+    // Explorer. cmd /c start was unreliable for shortcuts whose paths
+    // contain cmd metacharacters or unusual shell associations (game
+    // launcher .lnks were a recurring miss).
     let is_exe = path.to_lowercase().ends_with(".exe");
     if is_exe {
         Command::new(&path)
@@ -53,11 +55,7 @@ pub fn launch(path: String) -> Result<(), String> {
             .map(|_| ())
             .map_err(|e| format!("launch failed: {e}"))
     } else {
-        Command::new("cmd")
-            .args(["/c", "start", "", &path])
-            .hidden()
-            .spawn()
-            .map(|_| ())
+        app_actions::invoke_shell_verb(&path, "open")
             .map_err(|e| format!("launch failed: {e}"))
     }
 }
