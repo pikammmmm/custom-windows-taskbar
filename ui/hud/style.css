@@ -289,7 +289,13 @@
   padding: 8px 0;
   cursor: pointer;
   transition: background 100ms ease, border-color 100ms ease, transform 100ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+/* Inline SVG should never absorb pointer events — without this the click
+   sometimes lands on the SVG instead of the button on hot paths. */
+.quick-btn > svg { pointer-events: none; }
 .quick-btn:hover {
   background: rgba(255,255,255,0.10);
   border-color: rgba(255,255,255,0.16);
