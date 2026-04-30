@@ -131,3 +131,21 @@ pub fn pid_of(hwnd: isize) -> u32 {
 pub fn foreground_hwnd() -> isize {
     unsafe { GetForegroundWindow().0 as isize }
 }
+
+/// Extension that hides the console window of a spawned child process —
+/// `Command::new("powershell")` etc. flashes a black box on screen by
+/// default on Windows because the child inherits a fresh console. Setting
+/// CREATE_NO_WINDOW (0x08000000) suppresses it entirely.
+pub trait CommandHidden {
+    fn hidden(&mut self) -> &mut Self;
+}
+
+impl CommandHidden for std::process::Command {
+    fn hidden(&mut self) -> &mut Self {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW: the child gets no console at all. Stdio handles
+        // are still usable via .output() / .stdin(). The flag is harmless
+        // for GUI subsystems (rundll32, explorer) — they ignore it.
+        self.creation_flags(0x0800_0000)
+    }
+}

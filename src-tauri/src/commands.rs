@@ -1,4 +1,5 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
+use crate::win32::CommandHidden;
 use crate::widgets::{audio, files, media, start_menu, warp};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -35,6 +36,7 @@ pub fn launch(path: String) -> Result<(), String> {
     if path.starts_with("shell:") {
         return Command::new("explorer.exe")
             .arg(&path)
+            .hidden()
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("launch failed: {e}"));
@@ -46,12 +48,14 @@ pub fn launch(path: String) -> Result<(), String> {
     let is_exe = path.to_lowercase().ends_with(".exe");
     if is_exe {
         Command::new(&path)
+            .hidden()
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("launch failed: {e}"))
     } else {
         Command::new("cmd")
             .args(["/c", "start", "", &path])
+            .hidden()
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("launch failed: {e}"))
@@ -65,6 +69,7 @@ pub fn launch(path: String) -> Result<(), String> {
 pub fn launch_uri(uri: String) -> Result<(), String> {
     Command::new("cmd")
         .args(["/c", "start", "", &uri])
+        .hidden()
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("launch_uri failed: {e}"))
@@ -371,14 +376,16 @@ pub fn power_action(action: String) -> Result<(), String> {
     let result = match action.as_str() {
         "lock"     => Command::new("rundll32.exe")
             .args(["user32.dll,LockWorkStation"])
+            .hidden()
             .spawn(),
         // SetSuspendState arg "0,1,0" = sleep (not hibernate), force, no wake events.
         "sleep"    => Command::new("rundll32.exe")
             .args(["powrprof.dll,SetSuspendState", "0,1,0"])
+            .hidden()
             .spawn(),
-        "signout"  => Command::new("shutdown").args(["/l"]).spawn(),
-        "restart"  => Command::new("shutdown").args(["/r", "/t", "0"]).spawn(),
-        "shutdown" => Command::new("shutdown").args(["/s", "/t", "0"]).spawn(),
+        "signout"  => Command::new("shutdown").args(["/l"]).hidden().spawn(),
+        "restart"  => Command::new("shutdown").args(["/r", "/t", "0"]).hidden().spawn(),
+        "shutdown" => Command::new("shutdown").args(["/s", "/t", "0"]).hidden().spawn(),
         other => return Err(format!("unknown power action: {other}")),
     };
     result.map(|_| ()).map_err(|e| format!("power_action failed: {e}"))

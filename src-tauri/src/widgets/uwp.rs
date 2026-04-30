@@ -7,6 +7,8 @@
 use serde::Deserialize;
 use std::process::Command;
 
+use crate::win32::CommandHidden;
+
 #[derive(Deserialize)]
 #[allow(non_snake_case)]
 struct StartApp {
@@ -29,6 +31,7 @@ pub fn enumerate() -> Vec<(String, String)> {
             "-Command",
             "Get-StartApps | ConvertTo-Json -Compress",
         ])
+        .hidden()
         .output();
     let Ok(out) = out else { return Vec::new() };
     if !out.status.success() { return Vec::new(); }
