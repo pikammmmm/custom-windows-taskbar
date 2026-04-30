@@ -13,6 +13,9 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 ## Install
 
+> Free code signing on Windows provided by [SignPath.io](https://signpath.io/),
+> certificate by the [SignPath Foundation](https://signpath.org/).
+
 Two options on the [Releases page](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest):
 
 **Installer (recommended)** — `glassbar_<version>_x64_en-US.msi`
