@@ -1,4 +1,4 @@
-use crate::widgets::{audio, battery, claude_usage, clock, internet, media, network, sysstats, warp, weather};
+use crate::widgets::{audio, battery, clock, internet, media, network, sysstats, warp, weather};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -14,7 +14,6 @@ pub struct HudSnapshot {
     pub battery: battery::BatteryState,
     pub weather: weather::WeatherState,
     pub warp: warp::WarpState,
-    pub claude_usage: claude_usage::ClaudeUsageState,
 }
 
 pub fn spawn(app: AppHandle, tick: Duration) {
@@ -23,7 +22,6 @@ pub fn spawn(app: AppHandle, tick: Duration) {
         let inet = internet::Probe::spawn();
         let wx = weather::Probe::spawn();
         let warp_probe = warp::Probe::spawn();
-        let claude = claude_usage::Probe::spawn();
         sysstats::prime();
         let mut prev_snapshot: Option<HudSnapshot> = None;
         let mut last_emit = Instant::now() - Duration::from_secs(1);
@@ -41,7 +39,6 @@ pub fn spawn(app: AppHandle, tick: Duration) {
                 battery: battery::current(),
                 weather: wx.current(),
                 warp: warp_probe.current(),
-                claude_usage: claude.current(),
             };
             let changed_substantively = prev_snapshot.as_ref()
                 .map(|p| !snapshot_equivalent(p, &snapshot))
@@ -66,6 +63,5 @@ fn snapshot_equivalent(a: &HudSnapshot, b: &HudSnapshot) -> bool {
         && a.battery == b.battery
         && a.weather == b.weather
         && a.warp == b.warp
-        && a.claude_usage == b.claude_usage
         && a.clock.now_local[..16] == b.clock.now_local[..16]
 }
