@@ -29,6 +29,16 @@ pub fn clear_menu_shown_at() {
 
 #[tauri::command]
 pub fn launch(path: String) -> Result<(), String> {
+    // shell:AppsFolder\<AppID> launches a UWP / Store app the same way the
+    // OS Start menu does. CreateProcess can't resolve these — they go
+    // through the shell namespace and only explorer.exe knows how.
+    if path.starts_with("shell:") {
+        return Command::new("explorer.exe")
+            .arg(&path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("launch failed: {e}"));
+    }
     // .exe runs directly via CreateProcess; everything else (docs, scripts,
     // .lnk shortcuts, archives, …) goes through the shell so the default
     // file handler is used. Without the split, double-clicking a pinned

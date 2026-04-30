@@ -49,8 +49,23 @@ pub fn build() -> Result<()> {
     // shortcut pointing at the same target. Keep the first display name.
     entries.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
     entries.dedup_by(|a, b| a.path.eq_ignore_ascii_case(&b.path));
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
+    // Supplement with UWP / Store apps — these don't have .lnk shortcuts so
+    // the walk above misses them entirely. We dedupe by lowered name so a
+    // Store app that ALSO has a .lnk (rare) doesn't appear twice.
+    let known: std::collections::HashSet<String> = entries.iter()
+        .map(|e| e.name.to_lowercase())
+        .collect();
+    for (name, app_id) in crate::widgets::uwp::enumerate() {
+        if known.contains(&name.to_lowercase()) { continue; }
+        // shell:AppsFolder\<AppID> is the canonical launch path; commands::launch
+        // detects the `shell:` prefix and routes via explorer.exe.
+        let path = format!("shell:AppsFolder\\{}", app_id);
+        let name_lower = name.to_lowercase();
+        entries.push(AppEntry { name, path, name_lower });
+    }
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     *index().write().unwrap() = entries;
     Ok(())
 }

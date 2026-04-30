@@ -144,6 +144,11 @@ fn apply_glass(window: &tauri::WebviewWindow) {
     dwm::strip_decorations(h);
     dwm::suppress_nc_rendering(h);
     dwm::round_corners(h);
+    // Heaviest hammer for Win11's focus-border accent — replace the host
+    // WindowProc so WM_NCPAINT and WM_NCACTIVATE never reach the default
+    // handler. Without this DWM still paints a white stroke on click on
+    // some 24H2 builds even with DWMWA_BORDER_COLOR=COLOR_NONE set.
+    crate::wndproc::silence_nc(h);
 }
 
 /// Add WS_EX_NOACTIVATE so clicking the window doesn't steal focus from the

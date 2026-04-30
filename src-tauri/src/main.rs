@@ -20,6 +20,7 @@ mod dock_autohide;
 mod keyhook;
 mod app_actions;
 mod stash;
+mod wndproc;
 
 /// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
 /// into our pinned.json. Critical: only items the user has pinned to the
