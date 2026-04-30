@@ -6,8 +6,10 @@ produces a signed MSI + signed .exes on the GitHub Release page.
 
 ## 1. Apply for SignPath Foundation
 
-Go to <https://signpath.io/foundation> → **Apply now**. The application form
-asks for:
+The Foundation lives at **<https://signpath.org>** (note `.org`, not `.io` —
+the `.io` domain is the commercial product). On the homepage, follow the
+*"For Open Source Projects"* / *"Apply for free signing"* call-to-action.
+The application form asks for:
 
 | Field | What to put |
 |---|---|
