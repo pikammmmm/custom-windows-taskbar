@@ -31,6 +31,10 @@ const el = {
   wxTemp: document.getElementById('wx-temp'),
   wxCond: document.getElementById('wx-cond'),
   warpBtn: document.getElementById('warp-btn'),
+  claudeBlock: document.getElementById('claude-block'),
+  claudeValue: document.getElementById('claude-value'),
+  claudeReset: document.getElementById('claude-reset'),
+  claudeBarFill: document.getElementById('claude-bar-fill'),
 };
 
 let prevOnline = null;
@@ -75,6 +79,40 @@ function setBarLevel(barEl, pct) {
   barEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
   barEl.classList.toggle('warn', pct >= 70 && pct < 90);
   barEl.classList.toggle('crit', pct >= 90);
+}
+
+/// Format a raw token count to "1.2M" / "847K" / "523" — keeps the HUD row
+/// terse so reset time and label still fit.
+function fmtTokens(n) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+  return String(n);
+}
+
+/// Seconds → "3h 45m" / "12m" / "30s" — drops the larger unit when zero so
+/// the row never reads "0h 30m".
+function fmtRemaining(secs) {
+  if (secs <= 0) return 'reset';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${secs}s`;
+}
+
+function renderClaudeUsage(u) {
+  if (!u || !u.block_start || !u.block_reset || u.tokens_used === 0) {
+    el.claudeBlock.hidden = true;
+    return;
+  }
+  el.claudeBlock.hidden = false;
+  el.claudeValue.textContent = fmtTokens(u.tokens_used);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const remaining = Math.max(0, u.block_reset - nowSec);
+  el.claudeReset.textContent = `resets in ${fmtRemaining(remaining)}`;
+  const cap = u.estimated_cap || 1;
+  const pct = (u.tokens_used / cap) * 100;
+  setBarLevel(el.claudeBarFill, pct);
 }
 
 function render() {
@@ -145,6 +183,9 @@ function render() {
         ? 'Cloudflare WARP — Connected (click to disconnect)'
         : 'Cloudflare WARP — Disconnected (click to connect)';
   }
+
+  // Claude 5-hour usage
+  renderClaudeUsage(lastSnapshot.claude_usage);
 
   // Weather
   const w = lastSnapshot.weather;
