@@ -26,7 +26,15 @@ Two options on the [Releases page](https://github.com/pikammmmm/glassbar/release
 2. Double-click to run — no install, no admin prompt, no Start-menu entry.
 3. To autostart, drop a shortcut into `shell:startup` (paste that into Run / File Explorer) or toggle *Launch at sign-in* in the HUD's Settings.
 
-To uninstall the MSI build: Settings → Apps → Installed apps → glassbar → Uninstall. For the portable .exe just delete the file.
+## Uninstall
+
+Pick whichever is more convenient:
+
+- **MSI build** — Settings → Apps → Installed apps → glassbar → Uninstall.
+  - Or run `uninstall.exe` from `Program Files\glassbar\` (it ships next to `glassbar.exe`). It hands off to `msiexec /x`, restores the Windows taskbar, removes autostart, and wipes user data + cache.
+- **Portable** — download `uninstall.exe` from the [Releases page](https://github.com/pikammmmm/glassbar/releases/latest) (or run the one already next to your portable `glassbar.exe`). It runs the same cleanup steps, then you delete `glassbar.exe` yourself.
+
+Either path also restores the standard Windows taskbar in case glassbar was killed without its exit handler running — that's the part you can't get back via "delete the file" alone.
 
 ## Build from source
 
