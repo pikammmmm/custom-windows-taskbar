@@ -1,6 +1,6 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
 use crate::win32::CommandHidden;
-use crate::widgets::{audio, files, media, start_menu, warp};
+use crate::widgets::{audio, files, media, start_menu, warp, weather};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -377,14 +377,18 @@ pub fn geocode_city(query: String) -> Result<Vec<GeoCity>, String> {
 }
 
 /// Persist the selected city so the next weather poll uses it. Frontend
-/// hands us the geocode result; we save name + coords to settings.json.
+/// hands us the geocode result; we save name + coords to settings.json,
+/// then poke the weather probe so the HUD updates within ~1s instead of
+/// waiting up to 15 minutes for the next scheduled poll.
 #[tauri::command]
 pub fn set_weather_city(name: String, lat: f64, lon: f64) -> Result<(), String> {
     let mut s = config::load_settings().map_err(|e| e.to_string())?;
     s.weather_city = Some(name);
     s.weather_lat = Some(lat);
     s.weather_lon = Some(lon);
-    config::save_settings(&s).map_err(|e| e.to_string())
+    config::save_settings(&s).map_err(|e| e.to_string())?;
+    weather::request_refresh();
+    Ok(())
 }
 
 /// Read the currently saved city — frontend uses this to pre-fill the
