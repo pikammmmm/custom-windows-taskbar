@@ -108,14 +108,22 @@ function renderClaudeUsage(u) {
     return;
   }
   el.claudeBlock.hidden = false;
-  el.claudeValue.textContent = fmtTokens(u.tokens_used);
+  const cap = u.estimated_cap || 1;
+  const pct = Math.min(999, (u.tokens_used / cap) * 100);
+  // Display as percentage rather than absolute tokens — keeps the row
+  // terse and lets the user gauge "how much of my block is gone" at a
+  // glance. Hover for the raw tokens.
+  el.claudeValue.textContent = `${pct.toFixed(pct < 10 ? 1 : 0)}%`;
+  el.claudeValue.title = `${u.tokens_used.toLocaleString()} tokens · ${u.messages} messages`;
   el.claudeAccount.textContent = u.account || '';
   el.claudeAccount.title = u.account ? `Logged in as ${u.account}` : '';
-  const nowSec = Math.floor(Date.now() / 1000);
-  const remaining = Math.max(0, u.block_reset - nowSec);
-  el.claudeReset.textContent = `resets in ${fmtRemaining(remaining)}`;
-  const cap = u.estimated_cap || 1;
-  const pct = (u.tokens_used / cap) * 100;
+  // Absolute reset time so the user can compare directly against Claude.ai's
+  // "your messages reset at HH:MM" notice — easier to verify than a
+  // relative countdown.
+  const reset = new Date(u.block_reset * 1000);
+  const hh = String(reset.getHours()).padStart(2, '0');
+  const mm = String(reset.getMinutes()).padStart(2, '0');
+  el.claudeReset.textContent = `resets at ${hh}:${mm}`;
   setBarLevel(el.claudeBarFill, pct);
 }
 

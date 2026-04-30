@@ -10,10 +10,12 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const BLOCK_DURATION_SECS: u64 = 5 * 3600;
-// Lookback enough to cover a full block plus the previous one — needed so
-// the block-walker can correctly identify where the *current* block began
-// even if it was preceded by a separate, expired block earlier the same day.
-const FILE_SCAN_LOOKBACK: Duration = Duration::from_secs(2 * BLOCK_DURATION_SECS + 30 * 60);
+// Lookback wide enough to walk a full day of blocks — the current block's
+// boundary is determined by where the *previous* block expired, so missing
+// older messages would push the reported start time forward incorrectly.
+// 24h covers any realistic continuous session; the mtime filter still
+// keeps the parse cost low.
+const FILE_SCAN_LOOKBACK: Duration = Duration::from_secs(24 * 3600);
 const REFRESH: Duration = Duration::from_secs(45);
 // Heuristic cap for the percentage bar. Pro users land around 1-2M / 5h,
 // Max users are routinely 5-10M. 8M is a Max-leaning middle so the bar
