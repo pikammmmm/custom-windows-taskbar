@@ -352,6 +352,28 @@ pub fn warp_toggle(connect: bool) -> Result<(), String> {
     warp::toggle(connect)
 }
 
+/// System power actions: lock / sleep / signout / restart / shutdown.
+/// Single command keyed by string so the HUD doesn't have to register
+/// five separate handlers. Restart/shutdown/signout require a confirm
+/// click on the JS side — they're irreversible from here.
+#[tauri::command]
+pub fn power_action(action: String) -> Result<(), String> {
+    let result = match action.as_str() {
+        "lock"     => Command::new("rundll32.exe")
+            .args(["user32.dll,LockWorkStation"])
+            .spawn(),
+        // SetSuspendState arg "0,1,0" = sleep (not hibernate), force, no wake events.
+        "sleep"    => Command::new("rundll32.exe")
+            .args(["powrprof.dll,SetSuspendState", "0,1,0"])
+            .spawn(),
+        "signout"  => Command::new("shutdown").args(["/l"]).spawn(),
+        "restart"  => Command::new("shutdown").args(["/r", "/t", "0"]).spawn(),
+        "shutdown" => Command::new("shutdown").args(["/s", "/t", "0"]).spawn(),
+        other => return Err(format!("unknown power action: {other}")),
+    };
+    result.map(|_| ()).map_err(|e| format!("power_action failed: {e}"))
+}
+
 #[tauri::command]
 pub fn media_toggle_play() -> Result<(), String> {
     media::toggle_play_pause().map_err(|e| e.to_string())

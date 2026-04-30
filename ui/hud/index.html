@@ -82,6 +82,22 @@
         <button class="quick-btn" data-uri="ms-settings:"              title="All Settings">⚙</button>
       </section>
 
+      <!-- Power menu — system actions. Restart / sign out / shut down are
+           armed on first click and only fire on the second confirm tap. -->
+      <section class="block power-block">
+        <button class="apps-header" id="power-toggle" aria-expanded="false">
+          <span>Power</span>
+          <span class="apps-caret" id="power-caret">▸</span>
+        </button>
+        <div class="power-grid collapsed" id="power-grid">
+          <button class="power-btn" data-power-action="lock"    data-power-label="Lock">Lock</button>
+          <button class="power-btn" data-power-action="sleep"   data-power-label="Sleep">Sleep</button>
+          <button class="power-btn" data-power-action="signout" data-power-label="Sign out">Sign out</button>
+          <button class="power-btn" data-power-action="restart" data-power-label="Restart">Restart</button>
+          <button class="power-btn power-btn-danger" data-power-action="shutdown" data-power-label="Shut down">Shut down</button>
+        </div>
+      </section>
+
       <!-- Files stash — drop files in, drag them back out elsewhere -->
       <section class="block stash-block" id="stash-block">
         <button class="apps-header" id="stash-toggle" aria-expanded="true">

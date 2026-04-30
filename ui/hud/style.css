@@ -539,3 +539,62 @@
   transition: background 120ms ease;
 }
 .drag-handle:hover { background: rgba(255,255,255,0.08); }
+
+/* Power menu — collapsed grid that drops three columns of system actions.
+   Destructive buttons (signout/restart/shutdown) are armed on first click;
+   .armed paints them in the warning accent until they fire or time out. */
+.power-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px 0 6px;
+  overflow: hidden;
+  max-height: 320px;
+  transition: max-height 220ms ease, opacity 180ms ease, padding 180ms ease;
+}
+.power-grid.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.power-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--glass-fg);
+  padding: 9px 10px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background 130ms ease,
+    border-color 130ms ease,
+    transform 130ms ease,
+    color 130ms ease;
+}
+.power-btn:hover {
+  background: rgba(92, 182, 255, 0.14);
+  border-color: rgba(92, 182, 255, 0.30);
+  transform: translateY(-1px);
+}
+.power-btn:active { transform: translateY(0); }
+.power-btn-danger:hover {
+  background: rgba(255, 107, 107, 0.18);
+  border-color: rgba(255, 107, 107, 0.40);
+  color: #ffd9d9;
+}
+.power-btn.armed,
+.power-btn-danger.armed {
+  background: rgba(255, 122, 65, 0.30);
+  border-color: rgba(255, 160, 80, 0.65);
+  color: #fff1cf;
+  animation: power-pulse 1s ease-in-out infinite;
+}
+@keyframes power-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 160, 80, 0.0); }
+  50%      { box-shadow: 0 0 0 4px rgba(255, 160, 80, 0.20); }
+}
