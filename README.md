@@ -13,14 +13,20 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 ## Install
 
-Easiest path is the prebuilt MSI from the [Releases page](https://github.com/pikammmmm/glassbar/releases/latest):
+Two options on the [Releases page](https://github.com/pikammmmm/glassbar/releases/latest):
 
-1. Download `glassbar_<version>_x64_en-US.msi`.
-2. Run it — installs to `Program Files\glassbar\` and adds a Start-menu entry.
+**Installer (recommended)** — `glassbar_<version>_x64_en-US.msi`
+1. Download and run the MSI.
+2. Installs to `Program Files\glassbar\`, adds a Start-menu entry, registers an Apps & Features uninstaller.
 3. Launch from Start. The dock auto-shows when your cursor reaches the bottom of the screen.
 4. (Optional) Open the HUD → **Settings** → toggle *Launch at sign-in* for autostart.
 
-To uninstall: Settings → Apps → Installed apps → glassbar → Uninstall.
+**Portable** — `glassbar.exe`
+1. Download the .exe and put it anywhere you like (e.g. `C:\Tools\glassbar.exe`).
+2. Double-click to run — no install, no admin prompt, no Start-menu entry.
+3. To autostart, drop a shortcut into `shell:startup` (paste that into Run / File Explorer) or toggle *Launch at sign-in* in the HUD's Settings.
+
+To uninstall the MSI build: Settings → Apps → Installed apps → glassbar → Uninstall. For the portable .exe just delete the file.
 
 ## Build from source
 
