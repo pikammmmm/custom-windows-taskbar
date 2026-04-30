@@ -3,7 +3,7 @@
 //! the earliest message in the last 5 hours and resets 5 hours after that
 //! start. Same windowing as ccusage / claude.ai consumer rate-limit.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -106,9 +106,14 @@ fn scan() -> anyhow::Result<ClaudeUsageState> {
             b.tokens += tokens;
             b.messages += 1;
         } else {
+            // Anthropic anchors a new rate-limit window to the start of the
+            // hour of the first message — that's what Claude.ai's "resets
+            // at HH:00" message uses. Floor to the hour so our reset time
+            // matches what the user sees in the official UI.
+            let start = floor_to_hour(*ts);
             blocks.push(Block {
-                start: *ts,
-                end: *ts + Duration::from_secs(BLOCK_DURATION_SECS),
+                start,
+                end: start + Duration::from_secs(BLOCK_DURATION_SECS),
                 tokens: *tokens,
                 messages: 1,
             });
@@ -222,6 +227,17 @@ fn parse_jsonl(path: &Path, cutoff: SystemTime, out: &mut Vec<(SystemTime, u64)>
 
 fn parse_iso8601(s: &str) -> Option<SystemTime> {
     DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc).into())
+}
+
+/// Floor a `SystemTime` to the start of its UTC hour. Round-trips through
+/// chrono so we don't have to do the leap-aware arithmetic ourselves.
+fn floor_to_hour(t: SystemTime) -> SystemTime {
+    let dt: DateTime<Utc> = t.into();
+    let floored = dt
+        .with_minute(0).unwrap_or(dt)
+        .with_second(0).unwrap_or(dt)
+        .with_nanosecond(0).unwrap_or(dt);
+    floored.into()
 }
 
 fn to_unix(t: SystemTime) -> Option<i64> {
