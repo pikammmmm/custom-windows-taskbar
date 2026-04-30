@@ -14,11 +14,11 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 ## Features
 
-- **Dock** — pinned + running app icons, click to launch / focus / minimize, right-click for window list + pin / unpin, drag to reorder.
-  ![dock](docs/screenshots/dock.png)
+- **Dock** — pinned + running app icons, click to launch / focus / minimize, right-click for window list + pin / unpin, drag to reorder. Auto-shows on cursor-bottom, slides away when you leave.
+  ![dock animation: slide-in / slide-out](docs/screenshots/dock-anim.gif)
 - **Spotlight launcher** — Win-key tap or the dock's launcher button opens a glassy search overlay. Indexes the Start Menu, UWP / Microsoft Store apps (via `Get-StartApps`), and files in your common folders. Acronym + fuzzy / typo-tolerant matching.
-- **HUD** — clock, Open-Meteo weather (any city via the in-app picker), CPU / RAM / network throughput, now-playing media, audio device switcher, file stash with native drag-out, Cloudflare WARP toggle, system power menu.
-  ![HUD panel](docs/screenshots/hud.png)
+- **HUD** — clock, Open-Meteo weather (any city via the in-app picker), CPU / RAM / network throughput, now-playing media, audio device switcher, file stash with native drag-out, Cloudflare WARP toggle, system power menu. Drag to reposition, click the dock toggle to show / hide.
+  ![HUD animation: drag and toggle](docs/screenshots/hud-anim.gif)
 - **Glass** — Win11 acrylic backdrop, layered transparency, hand-drawn SVG icons for system apps.
 
 ## Install
