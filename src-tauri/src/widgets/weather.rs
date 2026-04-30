@@ -1,4 +1,10 @@
-use serde::Serialize;
+//! Weather probe — Open-Meteo current-conditions endpoint, location driven
+//! by the user's settings. Open-Meteo's geocoding API resolves any city
+//! name into lat/lon (separate command in commands.rs); the user picks one
+//! in the HUD's setup / Settings flow and we read the saved coords here.
+//! No API key required.
+
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -7,39 +13,60 @@ pub struct WeatherState {
     pub location: String,
     /// Air temperature in °C. `None` until the first probe lands.
     pub temp_c: Option<f32>,
-    /// One-word condition derived from the weather icon (Clear, Cloudy, Rainy, …).
+    /// One-word condition derived from the WMO code.
     pub condition: Option<String>,
-    /// WMO-style weather code, mapped from ARSO's icon string. Kept on the
-    /// WMO scale because the HUD's emoji picker is keyed off WMO codes.
+    /// Raw WMO weather interpretation code — used by the HUD to pick a glyph.
     pub code: Option<u8>,
 }
 
-const ARSO_URL: &str = "https://meteo.arso.gov.si/uploads/probase/www/observ/surface/text/sl/observation_MARIBOR_TABOR_latest.xml";
-// ARSO publishes new observations ~25 min after each hour, hourly. 15 min
-// keeps us close to fresh without pounding their server.
+// 15 min — Open-Meteo's free tier asks for moderate polling and the model
+// data updates hourly anyway, so 15 minutes is comfortable headroom.
 const REFRESH: Duration = Duration::from_secs(900);
 const TIMEOUT: Duration = Duration::from_secs(8);
+
+#[derive(Deserialize)]
+struct Resp {
+    current: Current,
+}
+#[derive(Deserialize)]
+struct Current {
+    temperature_2m: f32,
+    weather_code: u8,
+}
 
 pub struct Probe {
     state: Arc<Mutex<WeatherState>>,
 }
 
 impl Probe {
+    /// Spawn the polling thread. The probe re-reads the user's settings
+    /// every refresh so changing the city in the HUD flips weather without
+    /// a glassbar restart.
     pub fn spawn() -> Self {
-        let state = Arc::new(Mutex::new(WeatherState {
-            location: "Maribor".into(),
-            ..Default::default()
-        }));
+        let state = Arc::new(Mutex::new(WeatherState::default()));
         let s = state.clone();
         std::thread::spawn(move || loop {
-            match fetch() {
-                Ok((temp, code)) => {
-                    let mut g = s.lock().unwrap();
-                    g.temp_c = Some(temp);
-                    g.condition = Some(condition_for(code).into());
-                    g.code = Some(code);
+            // Reload settings every tick so a city change picks up promptly.
+            let settings = crate::config::load_settings().unwrap_or_default();
+            match (settings.weather_lat, settings.weather_lon) {
+                (Some(lat), Some(lon)) => {
+                    let location = settings.weather_city.unwrap_or_default();
+                    match fetch(lat, lon) {
+                        Ok((temp, code)) => {
+                            let mut g = s.lock().unwrap();
+                            g.location = location;
+                            g.temp_c = Some(temp);
+                            g.condition = Some(condition_for(code).into());
+                            g.code = Some(code);
+                        }
+                        Err(e) => tracing::debug!("weather fetch failed: {e}"),
+                    }
                 }
-                Err(e) => tracing::debug!("ARSO weather fetch failed: {e}"),
+                _ => {
+                    // No city configured yet — clear so the HUD shows the
+                    // "set a city" prompt instead of stale data.
+                    *s.lock().unwrap() = WeatherState::default();
+                }
             }
             std::thread::sleep(REFRESH);
         });
@@ -51,64 +78,21 @@ impl Probe {
     }
 }
 
-fn fetch() -> anyhow::Result<(f32, u8)> {
+fn fetch(lat: f64, lon: f64) -> anyhow::Result<(f32, u8)> {
+    let url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}\
+         &current=temperature_2m,weather_code&timezone=auto"
+    );
     let agent = ureq::AgentBuilder::new().timeout(TIMEOUT).build();
-    let xml = agent
-        .get(ARSO_URL)
+    let body: Resp = agent
+        .get(&url)
         .set("User-Agent", "glassbar/0.1")
         .call()?
-        .into_string()?;
-    let temp_str = extract_tag(&xml, "t")
-        .ok_or_else(|| anyhow::anyhow!("no <t> in ARSO response"))?;
-    let temp: f32 = temp_str.parse()?;
-    let icon = extract_tag(&xml, "nn_icon-wwsyn_icon").unwrap_or_default();
-    Ok((temp, arso_icon_to_wmo(&icon)))
+        .into_json()?;
+    Ok((body.current.temperature_2m, body.current.weather_code))
 }
 
-/// Tiny depth-1 tag extractor — ARSO's surface observation XML is flat enough
-/// that a real parser is overkill. Returns the inner text of the first
-/// occurrence of `<tag>...</tag>`, trimmed.
-fn extract_tag(xml: &str, tag: &str) -> Option<String> {
-    let open = format!("<{}>", tag);
-    let close = format!("</{}>", tag);
-    let start = xml.find(&open)? + open.len();
-    let end_rel = xml[start..].find(&close)?;
-    let inner = xml[start..start + end_rel].trim();
-    if inner.is_empty() { None } else { Some(inner.to_string()) }
-}
-
-/// Map ARSO's `nn_icon-wwsyn_icon` string back to WMO codes so the HUD's
-/// existing icon mapping keeps working. ARSO encodes weather as
-/// `<cloud-cover>[_<intensity><weather>][_<dayNight>]`, e.g. `clear_day`,
-/// `overcast_lightRA_day`, `prevCloudy_modTS_night`. Precipitation /
-/// thunderstorm / fog dominates the icon when present, otherwise we fall
-/// back to cloud-cover bucketing.
-fn arso_icon_to_wmo(icon: &str) -> u8 {
-    let i = icon.to_ascii_lowercase();
-
-    // Precipitation & special phenomena (precedence matters: TS over RA, SH over plain).
-    if i.contains("ts") { return 95; }                      // thunderstorm
-    if i.contains("shsn") { return 86; }                    // snow shower
-    if i.contains("sn") { return 71; }                      // snow
-    if i.contains("shra") { return 80; }                    // rain shower
-    if i.contains("ra") { return 61; }                      // rain
-    if i.contains("dz") { return 51; }                      // drizzle
-    if i.contains("fg") { return 45; }                      // fog
-
-    // No precipitation — bucket by cloud cover. Match the prefix so the
-    // optional `_day` / `_night` suffix doesn't trip us.
-    if i.starts_with("clear") { return 0; }
-    if i.starts_with("mostclear") { return 1; }
-    if i.starts_with("partcloudy") { return 2; }
-    if i.starts_with("modcloudy") { return 2; }
-    if i.starts_with("prevcloudy") { return 3; }
-    if i.starts_with("overcast") { return 3; }
-
-    255 // unknown → frontend renders the neutral fallback glyph
-}
-
-/// Map WMO codes to a one-word human label. Kept here (not in the frontend)
-/// so the HUD just shows whatever string we hand it.
+/// Map WMO weather codes to a one-word human label.
 fn condition_for(code: u8) -> &'static str {
     match code {
         0 => "Clear",

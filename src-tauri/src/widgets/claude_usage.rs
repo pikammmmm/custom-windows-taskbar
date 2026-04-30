@@ -34,6 +34,10 @@ pub struct ClaudeUsageState {
     /// Heuristic denominator the frontend can use for a percent bar. The
     /// bar fill = tokens_used / estimated_cap, clamped to 100%.
     pub estimated_cap: u64,
+    /// Best-effort display name of the account whose transcripts we read,
+    /// pulled from the local Claude Code OAuth store. None when the
+    /// credentials file doesn't exist or doesn't expose an email.
+    pub account: Option<String>,
 }
 
 pub struct Probe {
@@ -104,7 +108,49 @@ fn scan() -> anyhow::Result<ClaudeUsageState> {
         tokens_used,
         messages,
         estimated_cap: ESTIMATED_CAP,
+        account: read_account_email(),
     })
+}
+
+/// Best-effort: read the email from Claude Code's local credentials store.
+/// The file format isn't a stable public contract — we look for an "email"
+/// or "account" / "user" string anywhere in the JSON and return None on
+/// any miss so a schema change just gracefully hides the label.
+fn read_account_email() -> Option<String> {
+    let home = std::env::var_os("USERPROFILE")?;
+    for fname in [".credentials.json", "credentials.json"] {
+        let p = PathBuf::from(&home).join(".claude").join(fname);
+        let Ok(raw) = std::fs::read_to_string(&p) else { continue };
+        let Ok(v): Result<serde_json::Value, _> = serde_json::from_str(&raw) else { continue };
+        if let Some(s) = find_string_field(&v, &["email", "user_email", "account_email"]) {
+            return Some(s);
+        }
+        if let Some(s) = find_string_field(&v, &["account", "user", "name"]) {
+            return Some(s);
+        }
+    }
+    None
+}
+
+fn find_string_field(v: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    match v {
+        serde_json::Value::Object(m) => {
+            for k in keys {
+                if let Some(serde_json::Value::String(s)) = m.get(*k) { return Some(s.clone()); }
+            }
+            for (_, child) in m {
+                if let Some(s) = find_string_field(child, keys) { return Some(s); }
+            }
+            None
+        }
+        serde_json::Value::Array(a) => {
+            for child in a {
+                if let Some(s) = find_string_field(child, keys) { return Some(s); }
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 fn walk_collect(dir: &Path, cutoff: SystemTime, out: &mut Vec<(SystemTime, u64)>) {
@@ -138,14 +184,17 @@ fn parse_jsonl(path: &Path, cutoff: SystemTime, out: &mut Vec<(SystemTime, u64)>
         let Some(ts) = parse_iso8601(ts_str) else { continue };
         if ts < cutoff { continue; }
 
-        // Only assistant turns carry usage. Sum every flavour of token —
-        // cache reads count against the limit too.
+        // Only assistant turns carry usage. Sum input + output + cache
+        // CREATION but exclude cache READS — every turn re-reads the
+        // cached prompt so including them inflates a 200-turn session into
+        // hundreds of millions of phantom tokens. Cache reads also cost
+        // ~1/10 the price of fresh input on Anthropic billing so they
+        // aren't what users watch on a rate-limit dashboard anyway.
         let Some(usage) = v.get("message").and_then(|m| m.get("usage")) else { continue };
         let total =
             usage.get("input_tokens").and_then(|x| x.as_u64()).unwrap_or(0)
             + usage.get("output_tokens").and_then(|x| x.as_u64()).unwrap_or(0)
-            + usage.get("cache_creation_input_tokens").and_then(|x| x.as_u64()).unwrap_or(0)
-            + usage.get("cache_read_input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
+            + usage.get("cache_creation_input_tokens").and_then(|x| x.as_u64()).unwrap_or(0);
         if total > 0 {
             out.push((ts, total));
         }

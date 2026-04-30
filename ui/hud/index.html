@@ -11,14 +11,14 @@
         <div class="date" id="date">--</div>
       </section>
 
-      <!-- Weather card (Maribor) -->
+      <!-- Weather card — location is configurable via Settings → Weather city. -->
       <section class="block weather-block" id="weather-block">
         <div class="weather-icon" id="wx-icon">·</div>
         <div class="weather-meta">
           <div class="weather-temp" id="wx-temp">--°</div>
           <div class="weather-sub">
             <span id="wx-cond">…</span>
-            <span class="weather-loc">Maribor</span>
+            <span class="weather-loc" id="wx-loc">Set a city</span>
           </div>
         </div>
       </section>
@@ -29,6 +29,7 @@
         <div class="claude-row">
           <span class="claude-label">Claude</span>
           <span class="claude-value" id="claude-value">--</span>
+          <span class="claude-account" id="claude-account"></span>
           <span class="claude-reset" id="claude-reset"></span>
         </div>
         <div class="claude-bar">
@@ -181,6 +182,14 @@
             <input type="checkbox" id="set-autostart">
             <span>Launch at sign-in</span>
           </label>
+          <div class="settings-row settings-city-row">
+            <span>Weather city</span>
+            <span class="settings-city-current" id="settings-city-current">not set</span>
+          </div>
+          <div class="city-picker">
+            <input type="text" id="city-search" placeholder="Search city…" autocomplete="off" spellcheck="false">
+            <ul class="city-results" id="city-results"></ul>
+          </div>
         </div>
       </section>
 

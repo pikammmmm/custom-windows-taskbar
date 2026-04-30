@@ -334,6 +334,87 @@ pub fn set_hud_position(x: f64, y: f64) -> Result<(), String> {
     config::save_settings(&s).map_err(|e| e.to_string())
 }
 
+#[derive(Serialize)]
+pub struct GeoCity {
+    pub name: String,
+    pub admin: Option<String>,
+    pub country: Option<String>,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+/// Open-Meteo's geocoding API — name → list of candidate cities. Used by
+/// the HUD's city picker so the user can switch weather location without
+/// editing settings.json by hand. No API key required.
+#[tauri::command]
+pub fn geocode_city(query: String) -> Result<Vec<GeoCity>, String> {
+    let q = query.trim();
+    if q.is_empty() { return Ok(Vec::new()); }
+    let url = format!(
+        "https://geocoding-api.open-meteo.com/v1/search?name={}&count=8&language=en&format=json",
+        urlencode(q)
+    );
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(8))
+        .build();
+    let body: serde_json::Value = agent
+        .get(&url)
+        .set("User-Agent", "glassbar/0.1")
+        .call()
+        .map_err(|e| format!("geocode failed: {e}"))?
+        .into_json()
+        .map_err(|e| format!("geocode parse failed: {e}"))?;
+    let results = body.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+    Ok(results.into_iter().filter_map(|r| {
+        Some(GeoCity {
+            name: r.get("name")?.as_str()?.to_string(),
+            admin: r.get("admin1").and_then(|x| x.as_str()).map(str::to_string),
+            country: r.get("country").and_then(|x| x.as_str()).map(str::to_string),
+            lat: r.get("latitude")?.as_f64()?,
+            lon: r.get("longitude")?.as_f64()?,
+        })
+    }).collect())
+}
+
+/// Persist the selected city so the next weather poll uses it. Frontend
+/// hands us the geocode result; we save name + coords to settings.json.
+#[tauri::command]
+pub fn set_weather_city(name: String, lat: f64, lon: f64) -> Result<(), String> {
+    let mut s = config::load_settings().map_err(|e| e.to_string())?;
+    s.weather_city = Some(name);
+    s.weather_lat = Some(lat);
+    s.weather_lon = Some(lon);
+    config::save_settings(&s).map_err(|e| e.to_string())
+}
+
+/// Read the currently saved city — frontend uses this to pre-fill the
+/// picker on first paint and to detect first-run state (None = ask).
+#[tauri::command]
+pub fn get_weather_city() -> Option<GeoCity> {
+    let s = config::load_settings().ok()?;
+    Some(GeoCity {
+        name: s.weather_city?,
+        admin: None,
+        country: None,
+        lat: s.weather_lat?,
+        lon: s.weather_lon?,
+    })
+}
+
+/// Minimal URL-component encode — geocoding queries are short, plain
+/// city names so we just escape the bytes ureq's URL parser would refuse.
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.bytes() {
+        match c {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(c as char),
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{:02X}", c)),
+        }
+    }
+    out
+}
+
 #[tauri::command]
 pub fn set_autostart(enable: bool) -> Result<(), String> {
     let mut s = config::load_settings().map_err(|e| e.to_string())?;

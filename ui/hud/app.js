@@ -33,8 +33,10 @@ const el = {
   warpBtn: document.getElementById('warp-btn'),
   claudeBlock: document.getElementById('claude-block'),
   claudeValue: document.getElementById('claude-value'),
+  claudeAccount: document.getElementById('claude-account'),
   claudeReset: document.getElementById('claude-reset'),
   claudeBarFill: document.getElementById('claude-bar-fill'),
+  wxLoc: document.getElementById('wx-loc'),
 };
 
 let prevOnline = null;
@@ -107,6 +109,8 @@ function renderClaudeUsage(u) {
   }
   el.claudeBlock.hidden = false;
   el.claudeValue.textContent = fmtTokens(u.tokens_used);
+  el.claudeAccount.textContent = u.account || '';
+  el.claudeAccount.title = u.account ? `Logged in as ${u.account}` : '';
   const nowSec = Math.floor(Date.now() / 1000);
   const remaining = Math.max(0, u.block_reset - nowSec);
   el.claudeReset.textContent = `resets in ${fmtRemaining(remaining)}`;
@@ -194,6 +198,13 @@ function render() {
       el.wxTemp.textContent = `${Math.round(w.temp_c)}°`;
       el.wxIcon.textContent = wxGlyph(w.code ?? -1);
       el.wxCond.textContent = w.condition || '';
+      if (w.location) el.wxLoc.textContent = w.location;
+    } else if (!w.location) {
+      // No city set yet — point user at Settings → Weather city.
+      el.wxTemp.textContent = '—';
+      el.wxIcon.textContent = '·';
+      el.wxCond.textContent = 'Pick a city in Settings';
+      el.wxLoc.textContent = '';
     } else {
       el.wxTemp.textContent = '--°';
       el.wxCond.textContent = 'Loading…';
@@ -379,6 +390,53 @@ settingsToggle.addEventListener('click', () => {
 invoke('get_autostart').then((on) => { setAutostart.checked = !!on; }).catch(() => {});
 setAutostart.addEventListener('change', (e) => {
   invoke('set_autostart', { enable: e.target.checked }).catch(() => {});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Weather-city picker — Open-Meteo geocoding behind a debounced input. Pick
+// a result and we save name + lat + lon; weather probe re-reads settings
+// on its next tick and the HUD flips without a glassbar restart.
+// ─────────────────────────────────────────────────────────────────────────
+const citySearch = document.getElementById('city-search');
+const cityResults = document.getElementById('city-results');
+const cityCurrent = document.getElementById('settings-city-current');
+
+invoke('get_weather_city')
+  .then((c) => { if (c) cityCurrent.textContent = c.name; })
+  .catch(() => {});
+
+let cityDebounceTimer = null;
+citySearch?.addEventListener('input', () => {
+  clearTimeout(cityDebounceTimer);
+  const q = citySearch.value.trim();
+  if (!q) { cityResults.innerHTML = ''; return; }
+  // 280 ms debounce — long enough that fast typists don't fire 8 requests
+  // for "maribor" but short enough to feel responsive.
+  cityDebounceTimer = setTimeout(async () => {
+    const results = await invoke('geocode_city', { query: q }).catch(() => []);
+    cityResults.innerHTML = '';
+    for (const r of results) {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'city-name';
+      name.textContent = r.name;
+      li.appendChild(name);
+      const subParts = [r.admin, r.country].filter(Boolean);
+      if (subParts.length) {
+        const sub = document.createElement('span');
+        sub.className = 'city-sub';
+        sub.textContent = subParts.join(', ');
+        li.appendChild(sub);
+      }
+      li.addEventListener('click', async () => {
+        await invoke('set_weather_city', { name: r.name, lat: r.lat, lon: r.lon }).catch(() => {});
+        cityCurrent.textContent = r.name;
+        citySearch.value = '';
+        cityResults.innerHTML = '';
+      });
+      cityResults.appendChild(li);
+    }
+  }, 280);
 });
 
 // Quick toggles — `data-uri` opens a Windows Settings deep link,

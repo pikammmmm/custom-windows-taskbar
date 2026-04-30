@@ -39,11 +39,25 @@ pub struct Settings {
     pub hud_position: Option<(f64, f64)>,
     #[serde(default)]
     pub auto_start: bool,
+    /// Display name for the configured weather location. Shown next to the
+    /// temperature in the HUD. None = first run, treat as "not set yet".
+    #[serde(default)]
+    pub weather_city: Option<String>,
+    #[serde(default)]
+    pub weather_lat: Option<f64>,
+    #[serde(default)]
+    pub weather_lon: Option<f64>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { hud_position: None, auto_start: false }
+        Self {
+            hud_position: None,
+            auto_start: false,
+            weather_city: None,
+            weather_lat: None,
+            weather_lon: None,
+        }
     }
 }
 
