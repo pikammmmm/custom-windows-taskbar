@@ -16,17 +16,25 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 > Free code signing on Windows provided by [SignPath.io](https://signpath.io/),
 > certificate by the [SignPath Foundation](https://signpath.org/).
 
-Two options on the [Releases page](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest):
+All downloads live on the [Releases page](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest):
 
-**Installer (recommended)** — `glassbar_<version>_x64_en-US.msi`
+| File | Size | What it is |
+|---|---|---|
+| `glassbar_<version>_x64_en-US.msi` | ~2.7 MB | Installer (recommended) |
+| `glassbar.exe` | ~5.5 MB | Portable main app |
+| `uninstall.exe` | ~280 KB | Uninstaller — restores the Windows taskbar and wipes user data |
+
+### Option A — Installer (recommended)
+
 1. Download and run the MSI.
-2. Installs to `Program Files\glassbar\`, adds a Start-menu entry, registers an Apps & Features uninstaller.
-3. Launch from Start. The dock auto-shows when your cursor reaches the bottom of the screen.
+2. Installs to `Program Files\glassbar\`, adds a Start-menu entry, registers an Apps & Features uninstaller, and drops `uninstall.exe` next to the main app.
+3. Launch glassbar from Start. The dock auto-shows when your cursor reaches the bottom of the screen.
 4. (Optional) Open the HUD → **Settings** → toggle *Launch at sign-in* for autostart.
 
-**Portable** — `glassbar.exe`
-1. Download the .exe and put it anywhere you like (e.g. `C:\Tools\glassbar.exe`).
-2. Double-click to run — no install, no admin prompt, no Start-menu entry.
+### Option B — Portable
+
+1. Download `glassbar.exe` (and `uninstall.exe` if you want a clean teardown later) and put them in the same folder, e.g. `C:\Tools\glassbar\`.
+2. Double-click `glassbar.exe` to run — no install, no admin prompt, no Start-menu entry.
 3. To autostart, drop a shortcut into `shell:startup` (paste that into Run / File Explorer) or toggle *Launch at sign-in* in the HUD's Settings.
 
 ## Uninstall
