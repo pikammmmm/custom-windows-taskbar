@@ -573,11 +573,82 @@
   font-weight: 600;
   color: var(--glass-fg);
 }
+.claude-account {
+  font-size: 10px;
+  color: rgba(180, 215, 255, 0.85);
+  background: rgba(92, 182, 255, 0.12);
+  border: 1px solid rgba(92, 182, 255, 0.30);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.claude-account:empty { display: none; }
 .claude-reset {
   margin-left: auto;
   color: var(--glass-fg-dim);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
+}
+
+/* City picker — search input + result list lives inside the Settings block. */
+.settings-city-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-city-current {
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.city-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#city-search {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 7px;
+  color: var(--glass-fg);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 9px;
+  outline: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+#city-search:focus {
+  border-color: rgba(92, 182, 255, 0.45);
+  background: rgba(255, 255, 255, 0.10);
+}
+.city-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.city-results:empty { display: none; }
+.city-results li {
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.city-results li:hover { background: rgba(92, 182, 255, 0.18); }
+.city-results .city-name { font-weight: 500; }
+.city-results .city-sub {
+  font-size: 10px;
+  color: var(--glass-fg-dim);
+  margin-left: 6px;
 }
 .claude-bar {
   position: relative;
