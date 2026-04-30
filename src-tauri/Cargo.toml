@@ -2,6 +2,19 @@
 name = "glassbar"
 version = "0.1.0"
 edition = "2021"
+# Explicit default-run so `cargo build` / `cargo tauri build` pick
+# glassbar.exe as the main binary even with the second `uninstall`
+# bin sitting in src/bin/. Without this Tauri's bundler can pick the
+# wrong one and ship the uninstaller as the app.
+default-run = "glassbar"
+
+[[bin]]
+name = "glassbar"
+path = "src/main.rs"
+
+[[bin]]
+name = "uninstall"
+path = "src/bin/uninstall.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

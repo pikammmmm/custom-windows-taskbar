@@ -17,6 +17,7 @@
   "bundle": {
     "active": true,
     "targets": ["msi"],
-    "icon": ["icons/icon.ico"]
+    "icon": ["icons/icon.ico"],
+    "resources": ["target/release/uninstall.exe"]
   }
 }
