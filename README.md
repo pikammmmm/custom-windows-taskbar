@@ -4,11 +4,19 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 [![Latest release](https://img.shields.io/github/v/release/pikammmmm/custom-windows-taskbar?label=download)](https://github.com/pikammmmm/custom-windows-taskbar/releases/latest)
 
+![glassbar dock and HUD on Windows 11](docs/screenshots/hero.png)
+
+> Status: early release (v0.1.0). Bugs and rough edges expected on
+> non-1080p / multi-monitor / fractional-DPI configurations. Issues and
+> PRs warmly welcomed.
+
 ## Features
 
 - **Dock** — pinned + running app icons, click to launch / focus / minimize, right-click for window list + pin / unpin, drag to reorder.
+  ![dock](docs/screenshots/dock.png)
 - **Spotlight launcher** — Win-key tap or the dock's launcher button opens a glassy search overlay. Indexes the Start Menu, UWP / Microsoft Store apps (via `Get-StartApps`), and files in your common folders. Acronym + fuzzy / typo-tolerant matching.
-- **HUD** — clock, ARSO Maribor weather, CPU / RAM / network throughput, now-playing media, audio device switcher, file stash with native drag-out, Cloudflare WARP toggle, system power menu, Claude 5-hour usage bar.
+- **HUD** — clock, Open-Meteo weather (any city via the in-app picker), CPU / RAM / network throughput, now-playing media, audio device switcher, file stash with native drag-out, Cloudflare WARP toggle, system power menu.
+  ![HUD panel](docs/screenshots/hud.png)
 - **Glass** — Win11 acrylic backdrop, layered transparency, hand-drawn SVG icons for system apps.
 
 ## Install
