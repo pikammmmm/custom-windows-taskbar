@@ -49,8 +49,19 @@ pub fn launch(path: String) -> Result<(), String> {
     // launcher .lnks were a recurring miss).
     let is_exe = path.to_lowercase().ends_with(".exe");
     if is_exe {
-        Command::new(&path)
-            .hidden()
+        // Set CWD to the exe's own directory. Many games and bundled apps
+        // load DLLs / configs from a working directory matching their
+        // install dir — Hitman 3's launcher, Steam shortcuts, anything
+        // shipping side-by-side resources. Inheriting glassbar's CWD
+        // makes them fail silently. Mirrors what Explorer does on
+        // double-click.
+        let mut cmd = Command::new(&path);
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            if !parent.as_os_str().is_empty() {
+                cmd.current_dir(parent);
+            }
+        }
+        cmd.hidden()
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("launch failed: {e}"))

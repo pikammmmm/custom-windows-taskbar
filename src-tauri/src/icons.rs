@@ -37,6 +37,12 @@ pub fn get_icon_png(exe_path: &str, hwnd: Option<isize>) -> Result<Vec<u8>> {
 }
 
 pub fn get_icon_data_url(exe_path: &str, hwnd: Option<isize>) -> Result<String> {
+    // System binaries we'd rather paint ourselves — Windows' auto-extracted
+    // icons for these look dated next to the dock's other glyphs. SVG data
+    // URL keeps them crisp at any DPI.
+    if let Some(svg) = override_icon_for(exe_path) {
+        return Ok(svg.to_string());
+    }
     let png = get_icon_png(exe_path, hwnd)?;
     use base64::Engine;
     Ok(format!(
@@ -44,6 +50,40 @@ pub fn get_icon_data_url(exe_path: &str, hwnd: Option<isize>) -> Result<String> 
         base64::engine::general_purpose::STANDARD.encode(&png)
     ))
 }
+
+/// Hand-tuned SVG overrides for specific system exes. Returned as a data
+/// URL ready to drop into <img src=>. None for everything else.
+fn override_icon_for(exe_path: &str) -> Option<&'static str> {
+    let lc = exe_path.to_lowercase();
+    let stem = std::path::Path::new(&lc)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    match stem {
+        "explorer.exe" => Some(EXPLORER_SVG_DATA_URL),
+        _ => None,
+    }
+}
+
+/// Modern flat folder — light blue front face with a subtle tab. Encoded
+/// as a percent-escaped SVG data URL so the dock's <img> can render it
+/// directly without any extra plumbing.
+const EXPLORER_SVG_DATA_URL: &str = "data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
+<defs>\
+<linearGradient id='f' x1='0' y1='0' x2='0' y2='1'>\
+<stop offset='0%25' stop-color='%2378c8ff'/>\
+<stop offset='100%25' stop-color='%234a9bdb'/>\
+</linearGradient>\
+<linearGradient id='b' x1='0' y1='0' x2='0' y2='1'>\
+<stop offset='0%25' stop-color='%23ffd47a'/>\
+<stop offset='100%25' stop-color='%23e8a93b'/>\
+</linearGradient>\
+</defs>\
+<path d='M3 9 a2 2 0 0 1 2-2 h7 l2 3 h13 a2 2 0 0 1 2 2 v3 H3 z' fill='url(%23b)'/>\
+<path d='M3 13 a2 2 0 0 1 2-2 h22 a2 2 0 0 1 2 2 v12 a2 2 0 0 1 -2 2 h-22 a2 2 0 0 1 -2 -2 z' fill='url(%23f)'/>\
+<path d='M3 13 h26 v3 h-26 z' fill='%23ffffff' opacity='0.18'/>\
+</svg>";
 
 /// Pre-populate the icon cache for `exe_path` from a different source path
 /// (typically the original .lnk shortcut). The shell's `IShellItemImageFactory`
