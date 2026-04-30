@@ -201,91 +201,147 @@ async function iconNode({ exe, label, running, animateLaunch, isPinned }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Reorder via HTML5 drag-and-drop. The dragged icon carries its exe path
-// in a custom MIME type so we can tell our own intra-dock drags apart from
-// arbitrary OS file drops (which still pin via onDragDropEvent).
+// Smooth pointer-event reorder. We avoid HTML5 native drag here because its
+// browser-rendered ghost looks pixelated and other icons can't shift around
+// it. Instead: capture the pointer, translate the dragged icon to follow
+// the cursor, and slide siblings out of the way via CSS transitions.
 // ─────────────────────────────────────────────────────────────────────────
-const REORDER_MIME = 'application/x-glassbar-pin';
+const REORDER_THRESHOLD_PX = 5;
+// Icon (44px) + center gap (6px). Used to compute the slide amount when
+// shifting siblings out of the dragged icon's slot.
+const SLOT_PX = 50;
 
 function makeReorderable(node, exe) {
-  node.draggable = true;
-  node.addEventListener('dragstart', (ev) => {
-    ev.dataTransfer.effectAllowed = 'move';
-    ev.dataTransfer.setData(REORDER_MIME, exe.toLowerCase());
-    // Some browsers refuse to start a drag without text/plain set too.
-    ev.dataTransfer.setData('text/plain', exe);
-    node.classList.add('dragging');
+  node.dataset.reorderable = 'true';
+  let active = null;
+
+  node.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    active = {
+      pointerId: ev.pointerId,
+      downX: ev.clientX,
+      downY: ev.clientY,
+      dragging: false,
+      reorderables: null,
+      originIndex: 0,
+      insertIndex: null,
+      // Cache the dragged icon's start position so we can compute the
+      // cursor-relative translate without rect-querying every move.
+      originLeft: 0,
+    };
   });
-  node.addEventListener('dragend', () => {
+
+  node.addEventListener('pointermove', (ev) => {
+    if (!active || ev.pointerId !== active.pointerId) return;
+    const dx = ev.clientX - active.downX;
+    const dy = ev.clientY - active.downY;
+
+    if (!active.dragging) {
+      if (Math.hypot(dx, dy) < REORDER_THRESHOLD_PX) return;
+      active.dragging = true;
+      try { node.setPointerCapture(active.pointerId); } catch {}
+      node.classList.add('dragging');
+      active.reorderables = [...center.querySelectorAll('.dock-icon[data-reorderable]')];
+      active.originIndex = active.reorderables.indexOf(node);
+      active.originLeft = node.getBoundingClientRect().left;
+    }
+
+    ev.preventDefault();
+    // Dragged icon follows cursor (lifted slightly + scaled). The vertical
+    // translate is dampened so the user can flick sideways without the icon
+    // drifting up off the dock.
+    node.style.transform = `translate(${dx}px, ${Math.max(-12, dy * 0.4)}px) scale(1.12)`;
+
+    const insertIndex = computeInsertIndex(ev.clientX, active.reorderables, node);
+    if (insertIndex !== active.insertIndex) {
+      active.insertIndex = insertIndex;
+      applySlotShifts(active.reorderables, node, active.originIndex, insertIndex);
+    }
+  });
+
+  function endDrag() {
+    if (!active) return;
+    const a = active;
+    active = null;
+    if (!a.dragging) return;
+
+    // Suppress the click that fires right after pointerup — pointer events
+    // don't auto-suppress synthetic clicks like HTML5 drag does, so without
+    // this guard every reorder would also launch the app.
+    node._suppressNextClick = true;
+
+    // Reset siblings — their re-render after pinned:changed will paint them
+    // in the right place, and clearing inline transforms lets the CSS
+    // transition glide them home if the order didn't change.
+    for (const ic of a.reorderables) {
+      if (ic !== node) { ic.style.transform = ''; }
+    }
+
+    if (a.insertIndex !== null && a.insertIndex !== a.originIndex) {
+      const exes = pinned.map(p => p.path);
+      const draggedLc = exe.toLowerCase();
+      const filtered = exes.filter(p => p.toLowerCase() !== draggedLc);
+      const originalExe = exes.find(p => p.toLowerCase() === draggedLc) || exe;
+      const insertAt = Math.min(a.insertIndex, filtered.length);
+      const newOrder = [
+        ...filtered.slice(0, insertAt),
+        originalExe,
+        ...filtered.slice(insertAt),
+      ];
+      invoke('set_pinned_order', { paths: newOrder }).catch(() => {});
+    }
+
+    node.style.transform = '';
     node.classList.remove('dragging');
-    clearDropMarkers();
-  });
-}
-
-function clearDropMarkers() {
-  for (const n of center.querySelectorAll('.drop-before, .drop-after')) {
-    n.classList.remove('drop-before', 'drop-after');
   }
+
+  node.addEventListener('pointerup', endDrag);
+  node.addEventListener('pointercancel', endDrag);
+  // Capture-phase click guard — read the flag set in endDrag and swallow
+  // the click before iconNode's own click handler fires.
+  node.addEventListener('click', (ev) => {
+    if (node._suppressNextClick) {
+      node._suppressNextClick = false;
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+    }
+  }, true);
 }
 
-/// True when the current drag carries our reorder payload. Reading the MIME
-/// type list during dragover lets us ignore arbitrary OS drags that happen
-/// to land on the dock — those are handled by Tauri's onDragDropEvent.
-function isReorderDrag(ev) {
-  const types = ev.dataTransfer?.types;
-  return !!types && Array.from(types).includes(REORDER_MIME);
-}
-
-center.addEventListener('dragover', (ev) => {
-  if (!isReorderDrag(ev)) return;
-  ev.preventDefault();
-  ev.dataTransfer.dropEffect = 'move';
-  const target = ev.target.closest('.dock-icon');
-  clearDropMarkers();
-  if (!target || !target.draggable) return;
-  const rect = target.getBoundingClientRect();
-  const before = ev.clientX < rect.left + rect.width / 2;
-  target.classList.add(before ? 'drop-before' : 'drop-after');
-});
-
-center.addEventListener('dragleave', (ev) => {
-  // Only clear when the drag actually exits the center container — child
-  // elements firing dragleave during nested traversal would otherwise
-  // strobe the indicator.
-  if (ev.target === center) clearDropMarkers();
-});
-
-center.addEventListener('drop', (ev) => {
-  if (!isReorderDrag(ev)) return;
-  ev.preventDefault();
-  const draggedExe = ev.dataTransfer.getData(REORDER_MIME);
-  const target = ev.target.closest('.dock-icon');
-  clearDropMarkers();
-  if (!draggedExe) return;
-
-  // Build the new order from the current pinned set, skipping the dragged
-  // exe and inserting it at the chosen position. We work off the
-  // authoritative `pinned` array (not the DOM) so dragging an extra by
-  // accident can't corrupt the order.
-  const currentPaths = pinned.map(p => p.path);
-  const filtered = currentPaths.filter(p => p.toLowerCase() !== draggedExe);
-  let insertIdx = filtered.length;
-  if (target && target.draggable) {
-    const targetExe = (target.dataset.exe || '').toLowerCase();
-    if (targetExe && targetExe !== draggedExe) {
-      const rect = target.getBoundingClientRect();
-      const before = ev.clientX < rect.left + rect.width / 2;
-      const idxInFiltered = filtered.findIndex(p => p.toLowerCase() === targetExe);
-      if (idxInFiltered >= 0) {
-        insertIdx = before ? idxInFiltered : idxInFiltered + 1;
-      }
+/// Find the index in `reorderables` where the dragged icon would land if
+/// dropped at `cursorX`. Returns the original index when the cursor is
+/// over the dragged icon itself so we don't oscillate when stationary.
+function computeInsertIndex(cursorX, reorderables, draggedNode) {
+  let idx = reorderables.length;
+  for (let i = 0; i < reorderables.length; i++) {
+    const ic = reorderables[i];
+    if (ic === draggedNode) continue;
+    const rect = ic.getBoundingClientRect();
+    if (cursorX < rect.left + rect.width / 2) {
+      idx = reorderables.indexOf(ic);
+      break;
     }
   }
-  const original = currentPaths.find(p => p.toLowerCase() === draggedExe);
-  if (!original) return;
-  const newOrder = [...filtered.slice(0, insertIdx), original, ...filtered.slice(insertIdx)];
-  invoke('set_pinned_order', { paths: newOrder }).catch(() => {});
-});
+  return idx;
+}
+
+/// Translate every sibling so that the dragged icon's destination slot is
+/// empty. Icons between origin and destination shift one slot toward origin.
+function applySlotShifts(reorderables, draggedNode, originIndex, insertIndex) {
+  for (let i = 0; i < reorderables.length; i++) {
+    const ic = reorderables[i];
+    if (ic === draggedNode) continue;
+    let shift = 0;
+    if (insertIndex > originIndex) {
+      // Dragged is moving right — icons between (origin, insertIndex] slide left.
+      if (i > originIndex && i < insertIndex) shift = -SLOT_PX;
+    } else if (insertIndex < originIndex) {
+      // Dragged is moving left — icons between [insertIndex, origin) slide right.
+      if (i >= insertIndex && i < originIndex) shift = SLOT_PX;
+    }
+    ic.style.transform = shift ? `translateX(${shift}px)` : '';
+  }
+}
 
 const FALLBACK_PALETTE = [
   '#4f7cff', '#ef476f', '#06d6a0', '#ffd166',

@@ -356,6 +356,59 @@ document.querySelectorAll('.quick-btn').forEach(btn => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Power menu — collapsed by default. Destructive actions (signout/restart/
+// shutdown) require a confirm tap within 3s; lock and sleep fire instantly.
+// ─────────────────────────────────────────────────────────────────────────
+const powerToggle = document.getElementById('power-toggle');
+const powerGrid = document.getElementById('power-grid');
+const powerCaret = document.getElementById('power-caret');
+powerToggle?.addEventListener('click', () => {
+  const expanded = powerToggle.getAttribute('aria-expanded') === 'true';
+  powerToggle.setAttribute('aria-expanded', String(!expanded));
+  powerGrid.classList.toggle('collapsed', expanded);
+  powerCaret.textContent = expanded ? '▸' : '▾';
+});
+
+const POWER_DANGEROUS = new Set(['signout', 'restart', 'shutdown']);
+const powerArmed = new Map();   // action → timeoutId
+document.querySelectorAll('[data-power-action]').forEach((btn) => {
+  const action = btn.dataset.powerAction;
+  const label = btn.dataset.powerLabel;
+  btn.addEventListener('click', () => {
+    if (POWER_DANGEROUS.has(action) && !powerArmed.has(action)) {
+      // First click — arm and wait for confirm. Disarm any other armed
+      // dangerous button so only one is hot at a time.
+      for (const [other, t] of powerArmed) {
+        clearTimeout(t);
+        const otherBtn = document.querySelector(`[data-power-action="${other}"]`);
+        if (otherBtn) {
+          otherBtn.classList.remove('armed');
+          otherBtn.textContent = otherBtn.dataset.powerLabel;
+        }
+      }
+      powerArmed.clear();
+      btn.classList.add('armed');
+      btn.textContent = `Tap to confirm`;
+      const id = setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = label;
+        powerArmed.delete(action);
+      }, 3000);
+      powerArmed.set(action, id);
+      return;
+    }
+    // Second click (or non-dangerous) — fire.
+    if (powerArmed.has(action)) {
+      clearTimeout(powerArmed.get(action));
+      powerArmed.delete(action);
+      btn.classList.remove('armed');
+      btn.textContent = label;
+    }
+    invoke('power_action', { action }).catch(() => {});
+  });
+});
+
 // WARP button: left-click toggles connection, right-click opens the app.
 // Toggle is driven by the most recent snapshot rather than a re-poll so
 // the user gets instant feedback even if warp-cli takes a moment.
