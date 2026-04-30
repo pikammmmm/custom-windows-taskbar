@@ -60,29 +60,66 @@ fn override_icon_for(exe_path: &str) -> Option<&'static str> {
         .and_then(|n| n.to_str())
         .unwrap_or("");
     match stem {
-        "explorer.exe" => Some(EXPLORER_SVG_DATA_URL),
+        "explorer.exe"        => Some(EXPLORER_SVG_DATA_URL),
+        "taskmgr.exe"         => Some(TASKMGR_SVG_DATA_URL),
+        "systemsettings.exe"  => Some(SETTINGS_SVG_DATA_URL),
         _ => None,
     }
 }
 
-/// Modern flat folder — light blue front face with a subtle tab. Encoded
-/// as a percent-escaped SVG data URL so the dock's <img> can render it
-/// directly without any extra plumbing.
+// All overrides are encoded as percent-escaped SVG data URLs (`%23` = `#`,
+// `%25` = `%`, `%20` = ` `). Each glyph is hand-drawn and intentionally
+// distinct from Microsoft's stock icon so glassbar reads as its own surface.
+
+/// File Explorer — a small window with a sidebar + 2x2 file tile grid.
+/// Reads as "file manager" without copying the OS folder glyph.
 const EXPLORER_SVG_DATA_URL: &str = "data:image/svg+xml;utf8,\
 <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
-<defs>\
-<linearGradient id='f' x1='0' y1='0' x2='0' y2='1'>\
-<stop offset='0%25' stop-color='%2378c8ff'/>\
-<stop offset='100%25' stop-color='%234a9bdb'/>\
-</linearGradient>\
-<linearGradient id='b' x1='0' y1='0' x2='0' y2='1'>\
-<stop offset='0%25' stop-color='%23ffd47a'/>\
-<stop offset='100%25' stop-color='%23e8a93b'/>\
-</linearGradient>\
-</defs>\
-<path d='M3 9 a2 2 0 0 1 2-2 h7 l2 3 h13 a2 2 0 0 1 2 2 v3 H3 z' fill='url(%23b)'/>\
-<path d='M3 13 a2 2 0 0 1 2-2 h22 a2 2 0 0 1 2 2 v12 a2 2 0 0 1 -2 2 h-22 a2 2 0 0 1 -2 -2 z' fill='url(%23f)'/>\
-<path d='M3 13 h26 v3 h-26 z' fill='%23ffffff' opacity='0.18'/>\
+<rect x='3' y='6' width='26' height='20' rx='3' fill='%233d6fb8'/>\
+<rect x='3' y='6' width='26' height='4'  rx='3' fill='%235d8eff'/>\
+<circle cx='6'   cy='8' r='0.7' fill='%23ffffff' opacity='0.65'/>\
+<circle cx='8.2' cy='8' r='0.7' fill='%23ffffff' opacity='0.65'/>\
+<circle cx='10.4' cy='8' r='0.7' fill='%23ffffff' opacity='0.65'/>\
+<rect x='5' y='12' width='6' height='12' rx='1.5' fill='%23ffffff' opacity='0.18'/>\
+<circle cx='6.6' cy='14.5' r='0.6' fill='%23ffffff' opacity='0.75'/>\
+<circle cx='6.6' cy='17'   r='0.6' fill='%23ffffff' opacity='0.75'/>\
+<circle cx='6.6' cy='19.5' r='0.6' fill='%23ffffff' opacity='0.75'/>\
+<rect x='13' y='12.5' width='5' height='5' rx='1' fill='%23a3c5ff'/>\
+<rect x='20' y='12.5' width='5' height='5' rx='1' fill='%23a3c5ff'/>\
+<rect x='13' y='19'   width='5' height='5' rx='1' fill='%23a3c5ff'/>\
+<rect x='20' y='19'   width='5' height='5' rx='1' fill='%23a3c5ff'/>\
+</svg>";
+
+/// Task Manager — green system-monitor bar chart with a soft baseline.
+/// Animated activity vibe via four bars at varied heights.
+const TASKMGR_SVG_DATA_URL: &str = "data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
+<rect x='3' y='5' width='26' height='22' rx='3' fill='%231d2d24'/>\
+<rect x='3' y='5' width='26' height='22' rx='3' fill='%2334c87a' opacity='0.10'/>\
+<line x1='5' y1='23.5' x2='27' y2='23.5' stroke='%2334c87a' stroke-width='0.8' opacity='0.55'/>\
+<rect x='7'  y='17' width='3' height='6'  rx='1' fill='%2358e599'/>\
+<rect x='12' y='13' width='3' height='10' rx='1' fill='%2334c87a'/>\
+<rect x='17' y='9'  width='3' height='14' rx='1' fill='%231fa961'/>\
+<rect x='22' y='15' width='3' height='8'  rx='1' fill='%2358e599'/>\
+<circle cx='25' cy='8' r='1.4' fill='%23ff7a7a'/>\
+</svg>";
+
+/// Settings — three horizontal sliders with knobs at varied positions.
+/// Replaces the universal gear so the dock doesn't echo Microsoft's
+/// settings glyph while still reading as 'controls / preferences'.
+const SETTINGS_SVG_DATA_URL: &str = "data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
+<rect x='3' y='5' width='26' height='22' rx='3' fill='%231e2535'/>\
+<rect x='3' y='5' width='26' height='22' rx='3' fill='%235cb6ff' opacity='0.10'/>\
+<line x1='6' y1='11' x2='26' y2='11' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round' opacity='0.30'/>\
+<circle cx='21' cy='11' r='2.6' fill='%235cb6ff'/>\
+<circle cx='21' cy='11' r='1.0' fill='%23ffffff'/>\
+<line x1='6' y1='16' x2='26' y2='16' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round' opacity='0.30'/>\
+<circle cx='11' cy='16' r='2.6' fill='%235cb6ff'/>\
+<circle cx='11' cy='16' r='1.0' fill='%23ffffff'/>\
+<line x1='6' y1='21' x2='26' y2='21' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round' opacity='0.30'/>\
+<circle cx='24' cy='21' r='2.6' fill='%235cb6ff'/>\
+<circle cx='24' cy='21' r='1.0' fill='%23ffffff'/>\
 </svg>";
 
 /// Pre-populate the icon cache for `exe_path` from a different source path
