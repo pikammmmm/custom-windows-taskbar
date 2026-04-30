@@ -5,8 +5,18 @@
 //! No API key required.
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// Flipped to true by `request_refresh` to wake the probe out of its sleep.
+/// Used so a city change in the HUD updates the weather card right away
+/// instead of after the next 15-minute tick.
+static REFRESH_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+pub fn request_refresh() {
+    REFRESH_REQUESTED.store(true, Ordering::Release);
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 pub struct WeatherState {
@@ -68,7 +78,17 @@ impl Probe {
                     *s.lock().unwrap() = WeatherState::default();
                 }
             }
-            std::thread::sleep(REFRESH);
+            // Sleep in 1-second slices so a request_refresh() call breaks
+            // out of the wait promptly. Once the flag clears we either
+            // refetch (because the user changed a city) or fall through
+            // to the next scheduled tick.
+            let started = std::time::Instant::now();
+            while started.elapsed() < REFRESH {
+                std::thread::sleep(Duration::from_secs(1));
+                if REFRESH_REQUESTED.swap(false, Ordering::AcqRel) {
+                    break;
+                }
+            }
         });
         Self { state }
     }
