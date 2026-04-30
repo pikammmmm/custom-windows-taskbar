@@ -10,14 +10,15 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const BLOCK_DURATION_SECS: u64 = 5 * 3600;
-// Add 30 min slack on top of the block when picking which files to read,
-// in case mtime drifts behind the block start by a minute or two.
-const FILE_SCAN_LOOKBACK: Duration = Duration::from_secs(BLOCK_DURATION_SECS + 30 * 60);
+// Lookback enough to cover a full block plus the previous one — needed so
+// the block-walker can correctly identify where the *current* block began
+// even if it was preceded by a separate, expired block earlier the same day.
+const FILE_SCAN_LOOKBACK: Duration = Duration::from_secs(2 * BLOCK_DURATION_SECS + 30 * 60);
 const REFRESH: Duration = Duration::from_secs(45);
-// Heuristic cap for the percentage bar — between Pro (~1M / 5h) and Max
-// (~5M+). The user can re-skin the bar later if they want a different
-// denominator; bar fill is just a hint, not a hard limit.
-const ESTIMATED_CAP: u64 = 2_000_000;
+// Heuristic cap for the percentage bar. Pro users land around 1-2M / 5h,
+// Max users are routinely 5-10M. 8M is a Max-leaning middle so the bar
+// stays informative for either tier without saturating instantly.
+const ESTIMATED_CAP: u64 = 8_000_000;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 pub struct ClaudeUsageState {
@@ -80,33 +81,51 @@ fn scan() -> anyhow::Result<ClaudeUsageState> {
     let mut entries: Vec<(SystemTime, u64)> = Vec::new();
     walk_collect(&projects_dir, cutoff, &mut entries);
 
+    let idle_state = ClaudeUsageState {
+        estimated_cap: ESTIMATED_CAP,
+        account: read_account_email(),
+        ..Default::default()
+    };
+
     if entries.is_empty() {
-        return Ok(ClaudeUsageState { estimated_cap: ESTIMATED_CAP, ..Default::default() });
+        return Ok(idle_state);
     }
 
-    // Block starts at the earliest message we still have, capped at "now - 5h".
-    // Anything older than now - 5h is in a previous (already-reset) block.
-    let earliest_block_start = now - Duration::from_secs(BLOCK_DURATION_SECS);
-    let block_start = entries.iter()
-        .map(|(t, _)| *t)
-        .filter(|t| *t >= earliest_block_start)
-        .min();
-    let Some(block_start) = block_start else {
-        return Ok(ClaudeUsageState { estimated_cap: ESTIMATED_CAP, ..Default::default() });
-    };
-    let block_reset = block_start + Duration::from_secs(BLOCK_DURATION_SECS);
+    // Anchored 5-hour blocks: a block begins when the user sends a message
+    // after >=5h of silence, and lasts exactly 5h from that timestamp —
+    // matching how Claude.ai's rate limit actually works. Walk the sorted
+    // entries forward, opening a new block each time a message lands at or
+    // after the current block's end.
+    entries.sort_by_key(|(t, _)| *t);
+    struct Block { start: SystemTime, end: SystemTime, tokens: u64, messages: u32 }
+    let mut blocks: Vec<Block> = Vec::new();
+    for (ts, tokens) in &entries {
+        let extends_current = blocks.last().is_some_and(|b| *ts < b.end);
+        if extends_current {
+            let b = blocks.last_mut().unwrap();
+            b.tokens += tokens;
+            b.messages += 1;
+        } else {
+            blocks.push(Block {
+                start: *ts,
+                end: *ts + Duration::from_secs(BLOCK_DURATION_SECS),
+                tokens: *tokens,
+                messages: 1,
+            });
+        }
+    }
 
-    let in_block: Vec<&(SystemTime, u64)> = entries.iter()
-        .filter(|(t, _)| *t >= block_start && *t <= block_reset)
-        .collect();
-    let tokens_used: u64 = in_block.iter().map(|(_, n)| *n).sum();
-    let messages = in_block.len() as u32;
+    // Most recent block is the one we care about. If it's already past its
+    // reset window, the user is between blocks — show idle until the next
+    // message kicks off a fresh one.
+    let Some(last) = blocks.last() else { return Ok(idle_state); };
+    if now >= last.end { return Ok(idle_state); }
 
     Ok(ClaudeUsageState {
-        block_start: to_unix(block_start),
-        block_reset: to_unix(block_reset),
-        tokens_used,
-        messages,
+        block_start: to_unix(last.start),
+        block_reset: to_unix(last.end),
+        tokens_used: last.tokens,
+        messages: last.messages,
         estimated_cap: ESTIMATED_CAP,
         account: read_account_email(),
     })
