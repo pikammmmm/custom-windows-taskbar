@@ -6,8 +6,6 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 ![glassbar dock and HUD on Windows 11](docs/screenshots/hero.png)
 
-![demo](docs/screenshots/demo.gif)
-
 > Status: early release (v0.1.0). Bugs and rough edges expected on
 > non-1080p / multi-monitor / fractional-DPI configurations. Issues and
 > PRs warmly welcomed.
