@@ -49,6 +49,16 @@ pub fn launch(path: String) -> Result<(), String> {
     // launcher .lnks were a recurring miss).
     let is_exe = path.to_lowercase().ends_with(".exe");
     if is_exe {
+        // Squirrel-installed apps (Discord, Slack, GitHub Desktop, WhatsApp,
+        // Teams (older), Atom, etc.) live at <App>\app-VERSION\<App>.exe
+        // with an Update.exe launcher in the grandparent dir. The versioned
+        // path rotates on update, and even when the file still exists,
+        // launching the .exe directly skips Squirrel's bootstrap — apps can
+        // refuse to start, fail to single-instance, or break their auto-
+        // updater. Always go through Update.exe when the layout matches.
+        if let Some(res) = try_squirrel_launch(&path) {
+            return res;
+        }
         // Set CWD to the exe's own directory. Many games and bundled apps
         // load DLLs / configs from a working directory matching their
         // install dir — Hitman 3's launcher, Steam shortcuts, anything
@@ -69,6 +79,33 @@ pub fn launch(path: String) -> Result<(), String> {
         app_actions::invoke_shell_verb(&path, "open")
             .map_err(|e| format!("launch failed: {e}"))
     }
+}
+
+/// Detect the Squirrel install layout (`<App>\app-VERSION\<App>.exe` with
+/// `<App>\Update.exe` alongside) and launch via Update.exe's `--processStart`
+/// flag, which is what Squirrel installer-published apps want. Returns
+/// `Some(Result)` if the launch was attempted, `None` if the layout doesn't
+/// match and the caller should fall back to a direct CreateProcess.
+fn try_squirrel_launch(path: &str) -> Option<Result<(), String>> {
+    let p = std::path::Path::new(path);
+    let parent = p.parent()?;
+    let grandparent = parent.parent()?;
+    let update_exe = grandparent.join("Update.exe");
+
+    // Parent dir must be the versioned `app-*` folder Squirrel creates.
+    let parent_name = parent.file_name()?.to_str()?;
+    if !parent_name.starts_with("app-") { return None; }
+    if !update_exe.exists() { return None; }
+
+    let exe_name = p.file_name()?.to_str()?;
+    let result = Command::new(&update_exe)
+        .args(["--processStart", exe_name])
+        .current_dir(grandparent)
+        .hidden()
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("squirrel launch failed ({}): {e}", update_exe.display()));
+    Some(result)
 }
 
 /// Open a Windows shell URI (`ms-settings:`, `https://`, etc) via cmd /c
