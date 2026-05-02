@@ -581,32 +581,57 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
 
 /// "Close all" from the dock's right-click menu — matches Task Manager's
 /// End Task semantics. Posts WM_CLOSE first so apps that handle it can
-/// flush state, then after a short grace window force-kills the process
-/// for any windows still alive.
+/// flush state, then after a short grace window force-kills the windowed
+/// process AND any helper processes sharing the same exe basename. The
+/// helper-cleanup matters for Squirrel apps (Discord, Slack, GitHub
+/// Desktop, WhatsApp) which leave GPU / renderer / network helpers alive
+/// otherwise — preventing the next dock click from spawning a fresh
+/// window because Squirrel sees the app as still-running.
 #[tauri::command]
 pub fn close_hwnds(hwnds: Vec<isize>) -> Result<(), String> {
     use std::collections::HashSet;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::IsWindow;
 
+    // Capture the exe basename of every hwnd BEFORE we kill anything,
+    // since the PID lookups become unreliable once the process exits.
+    let mut image_names: HashSet<String> = HashSet::new();
+    for &h in &hwnds {
+        let pid = win32::pid_of(h);
+        if pid == 0 { continue; }
+        if let Some(exe) = win32::exe_of_pid(pid) {
+            if let Some(name) = std::path::Path::new(&exe)
+                .file_name().and_then(|n| n.to_str())
+            {
+                image_names.insert(name.to_string());
+            }
+        }
+    }
+
     // Phase 1 — graceful WM_CLOSE for every hwnd.
     for &h in &hwnds {
         let _ = win32::close(h);
     }
 
-    // Phase 2 — wait briefly, then TerminateProcess on whatever is left.
+    // Phase 2 — wait briefly, then force-kill anything still alive.
     // Spawned so the IPC reply can return immediately to the dock UI.
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(400));
         let mut killed: HashSet<u32> = HashSet::new();
         for h in hwnds {
-            // Skip if the window already went away.
-            unsafe {
-                if !IsWindow(HWND(h as *mut _)).as_bool() { continue; }
-            }
+            unsafe { if !IsWindow(HWND(h as *mut _)).as_bool() { continue; } }
             let pid = win32::pid_of(h);
             if pid == 0 || !killed.insert(pid) { continue; }
             let _ = win32::terminate_process_of(h);
+        }
+        // Phase 3 — taskkill /F /IM each exe basename. Catches helper
+        // processes (Squirrel renderers, GPU helpers) that don't have
+        // visible windows so the next launch sees a fully-clean slate.
+        for name in image_names {
+            let _ = Command::new("taskkill")
+                .args(["/F", "/IM", &name])
+                .hidden()
+                .output();
         }
     });
 

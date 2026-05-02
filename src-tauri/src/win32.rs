@@ -128,6 +128,27 @@ pub fn pid_of(hwnd: isize) -> u32 {
     }
 }
 
+/// Look up the full executable path for a given PID. Used by close_hwnds to
+/// figure out which image name to taskkill so Squirrel-style helper
+/// processes (Discord/Slack GPU + network helpers) get cleaned up alongside
+/// the windowed parent.
+pub fn exe_of_pid(pid: u32) -> Option<String> {
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf: [u16; 1024] = [0; 1024];
+        let mut size: u32 = buf.len() as u32;
+        let res = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_FORMAT(0),
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut size,
+        );
+        let _ = CloseHandle(handle);
+        if res.is_err() { return None; }
+        Some(String::from_utf16_lossy(&buf[..size as usize]))
+    }
+}
+
 pub fn foreground_hwnd() -> isize {
     unsafe { GetForegroundWindow().0 as isize }
 }
