@@ -98,6 +98,20 @@ fn try_squirrel_launch(path: &str) -> Option<Result<(), String>> {
     if !update_exe.exists() { return None; }
 
     let exe_name = p.file_name()?.to_str()?;
+
+    // The dock only routes to `launch` when no visible window exists for
+    // this exe (otherwise it focuses the existing window). Squirrel's
+    // --processStart silently no-ops if it sees the app is already
+    // running — which is the bug that left Discord stuck headless after
+    // a tray-minimize. Kill any existing instance first so Squirrel
+    // always spawns a fresh window. None of these apps (Discord, Slack,
+    // WhatsApp, GitHub Desktop) hold unsaved state, so the kill is safe.
+    let _ = Command::new("taskkill")
+        .args(["/F", "/IM", exe_name])
+        .hidden()
+        .output();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
     let result = Command::new(&update_exe)
         .args(["--processStart", exe_name])
         .current_dir(grandparent)
