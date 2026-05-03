@@ -47,6 +47,12 @@ const tray = {
   volVal: document.getElementById('tray-vol-val'),
   clock: document.getElementById('tray-clock'),
   time: document.getElementById('tray-time'),
+  media: document.getElementById('tray-media'),
+  mediaImg: document.getElementById('tray-media-img'),
+  mediaOverlay: document.getElementById('tray-media-overlay'),
+  mediaPrev: document.getElementById('tray-media-prev'),
+  mediaArt: document.getElementById('tray-media-art'),
+  mediaNext: document.getElementById('tray-media-next'),
 };
 
 let pinned = [];
@@ -465,6 +471,25 @@ function updateTray(snap) {
       ? `Online${snap.internet.ping_ms != null ? ` · ${snap.internet.ping_ms} ms` : ''}`
       : 'Offline';
   }
+  // Media chip — show whatever's playing right now (Spotify track, browser
+  // tab video, anything that registers with SMTC). Hidden when no session.
+  const m = snap.media;
+  if (m && m.has_session && m.title) {
+    tray.media.hidden = false;
+    if (m.thumbnail) {
+      tray.mediaImg.src = m.thumbnail;
+      tray.mediaImg.style.display = '';
+    } else {
+      // No artwork from the source — keep the chip but blank the art slot.
+      tray.mediaImg.removeAttribute('src');
+      tray.mediaImg.style.display = 'none';
+    }
+    tray.mediaOverlay.textContent = m.playing ? '⏸' : '▶';
+    const subtitle = [m.title, m.artist].filter(Boolean).join(' — ');
+    tray.media.title = `${subtitle} (click to ${m.playing ? 'pause' : 'play'})`;
+  } else {
+    tray.media.hidden = true;
+  }
 }
 
 // Tray chips → HUD for net + clock. Volume gets a custom popup with the
@@ -474,6 +499,21 @@ for (const id of ['tray-net', 'tray-clock']) {
     invoke('toggle_hud').catch(() => {});
   });
 }
+
+// Media chip controls — hand off to the existing SMTC commands. The
+// invoke fires-and-forgets; the next snapshot tick reflects the new
+// state on the chip.
+tray.mediaArt.addEventListener('click', () => {
+  invoke('media_toggle_play').catch(() => {});
+});
+tray.mediaPrev.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  invoke('media_prev').catch(() => {});
+});
+tray.mediaNext.addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  invoke('media_next').catch(() => {});
+});
 tray.vol.addEventListener('click', async (e) => {
   const items = [{ kind: 'header', name: 'Output device' }];
   try {

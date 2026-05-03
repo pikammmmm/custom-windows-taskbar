@@ -7,11 +7,6 @@ const el = {
   date: document.getElementById('date'),
   down: document.getElementById('down'),
   up: document.getElementById('up'),
-  mediaTitle: document.getElementById('media-title'),
-  mediaArtist: document.getElementById('media-artist'),
-  mediaPlay: document.getElementById('media-play'),
-  mediaNext: document.getElementById('media-next'),
-  mediaPrev: document.getElementById('media-prev'),
   volSlider: document.getElementById('vol-slider'),
   volPct: document.getElementById('vol-pct'),
   volIcon: document.getElementById('vol-icon'),
@@ -101,17 +96,7 @@ function render() {
     prevOnline = inet.online;
   }
 
-  // Media
-  const m = lastSnapshot.media;
-  if (m.has_session && m.title) {
-    el.mediaTitle.textContent = m.title;
-    el.mediaArtist.textContent = m.artist || '';
-    el.mediaPlay.textContent = m.playing ? '⏸' : '▶';
-  } else {
-    el.mediaTitle.textContent = 'Nothing playing';
-    el.mediaArtist.textContent = '';
-    el.mediaPlay.textContent = '▶';
-  }
+  // Media controls live in the dock tray now — see ui/dock/app.js.
 
   // Audio
   const a = lastSnapshot.audio;
@@ -478,9 +463,7 @@ el.warpBtn.addEventListener('contextmenu', (e) => {
   }).catch(() => {});
 });
 
-el.mediaPlay.addEventListener('click', () => invoke('media_toggle_play').catch(() => {}));
-el.mediaNext.addEventListener('click', () => invoke('media_next').catch(() => {}));
-el.mediaPrev.addEventListener('click', () => invoke('media_prev').catch(() => {}));
+// Media-control click handlers moved to dock/app.js (chip lives there now).
 
 el.volSlider.addEventListener('input', (e) => {
   const pct = parseInt(e.target.value, 10);

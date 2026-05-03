@@ -57,17 +57,8 @@
           <input type="range" id="vol-slider" min="0" max="100" value="50">
           <span class="vol-pct" id="vol-pct">--%</span>
         </div>
-        <div class="media-row" id="media-row">
-          <div class="media-meta">
-            <div class="title" id="media-title">Nothing playing</div>
-            <div class="artist" id="media-artist"></div>
-          </div>
-          <div class="media-controls">
-            <button class="media-btn" id="media-prev" title="Previous">⏮</button>
-            <button class="media-btn play" id="media-play" title="Play / pause">▶</button>
-            <button class="media-btn" id="media-next" title="Next">⏭</button>
-          </div>
-        </div>
+        <!-- Media controls moved to the dock tray (next to volume / clock).
+             The HUD's audio block now only handles volume + mute. -->
       </section>
 
       <!-- Quick toggles row → Windows Settings deep links + actions.
