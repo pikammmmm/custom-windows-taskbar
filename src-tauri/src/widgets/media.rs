@@ -1,12 +1,20 @@
 use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession,
     GlobalSystemMediaTransportControlsSessionManager,
     GlobalSystemMediaTransportControlsSessionMediaProperties,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status,
 };
+
+/// Re-extract the thumbnail this often even when the track signature is
+/// unchanged. Catches sources that swap artwork mid-track (Spotify
+/// occasionally lazily replaces the cover, browser tabs change favicons,
+/// some videos cycle keyframes) without re-doing the expensive async
+/// stream read every snapshot tick.
+const THUMBNAIL_TTL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 pub struct MediaState {
@@ -33,9 +41,11 @@ pub fn current() -> Result<MediaState> {
 
     let sig = format!("{title}\u{1F}{artist}");
     let mut cache = thumb_cache().lock().unwrap();
-    if cache.0 != sig {
+    let stale = cache.2.elapsed() > THUMBNAIL_TTL;
+    if cache.0 != sig || stale {
         cache.0 = sig;
         cache.1 = extract_thumbnail(&props);
+        cache.2 = Instant::now();
     }
     let thumbnail = cache.1.clone();
 
@@ -48,9 +58,12 @@ pub fn current() -> Result<MediaState> {
     })
 }
 
-fn thumb_cache() -> &'static Mutex<(String, Option<String>)> {
-    static SLOT: OnceLock<Mutex<(String, Option<String>)>> = OnceLock::new();
-    SLOT.get_or_init(|| Mutex::new((String::new(), None)))
+/// (track signature, last extracted thumbnail data URL, when extracted).
+/// `Instant::now()` for the initial value just keeps the type happy — the
+/// empty signature ensures the first read always re-extracts anyway.
+fn thumb_cache() -> &'static Mutex<(String, Option<String>, Instant)> {
+    static SLOT: OnceLock<Mutex<(String, Option<String>, Instant)>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new((String::new(), None, Instant::now())))
 }
 
 /// Pull the SMTC thumbnail (Spotify cover, browser tab favicon, video
