@@ -228,6 +228,81 @@ body.drop-active .glass-card {
 .tray-chip.batt-chip.charging .tray-icon { color: #6ee7b7; }
 .tray-chip.batt-chip.low .tray-icon { color: #f88; }
 
+/* Media chip — album art with prev/play/next mini buttons hugging it.
+   Smooth hover/press transitions for that tactile feel. */
+.tray-media {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  margin-right: 4px;
+  transition: background 140ms ease;
+}
+.tray-media:hover { background: rgba(255, 255, 255, 0.10); }
+.tray-media[hidden] { display: none; }
+
+.tray-media-prev,
+.tray-media-next {
+  background: transparent;
+  border: none;
+  color: #cfd6e4;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 110ms ease, color 110ms ease, transform 110ms ease;
+}
+.tray-media-prev:hover,
+.tray-media-next:hover {
+  background: rgba(92, 182, 255, 0.20);
+  color: #fff;
+}
+.tray-media-prev:active,
+.tray-media-next:active { transform: scale(0.92); }
+
+.tray-media-art {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 140ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.tray-media-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.tray-media-art .tray-media-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  pointer-events: none;
+}
+.tray-media-art:hover { transform: scale(1.06); }
+.tray-media-art:hover .tray-media-overlay { opacity: 1; }
+.tray-media-art:active { transform: scale(0.96); }
+/* When nothing is playing the chip is hidden, so playing-state styling
+   only needs to swap the overlay glyph from ▶ to ⏸. JS handles it. */
+
 /* ────────────────────────────────────────────────────────────────────────
    Tooltip (on icons; tray chips use native title= attribute)
    ──────────────────────────────────────────────────────────────────────── */

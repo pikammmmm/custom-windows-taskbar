@@ -1,6 +1,6 @@
 [package]
 name = "glassbar"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 # Explicit default-run so `cargo build` / `cargo tauri build` pick
 # glassbar.exe as the main binary even with the second `uninstall`
@@ -59,6 +59,7 @@ windows = { version = "0.58", features = [
   "Win32_UI_Shell_PropertiesSystem",
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Variant",
+  "Storage_Streams",
 ] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"

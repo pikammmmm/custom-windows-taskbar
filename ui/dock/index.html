@@ -14,6 +14,25 @@
       <!-- Right: tray status chips + HUD toggle -->
       <div class="dock-section dock-right">
         <div class="tray" id="tray">
+          <!-- Media chip — album art + prev/play/next controls. Shows the
+               currently-playing source's artwork (Spotify cover, browser
+               tab favicon, video keyframe). Hidden when nothing is playing. -->
+          <div class="tray-media" id="tray-media" hidden>
+            <button class="tray-media-prev" id="tray-media-prev" title="Previous">
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                <path d="M11 3 L5 8 L11 13 Z M4 3 L4 13" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="tray-media-art" id="tray-media-art" title="Play / pause">
+              <img id="tray-media-img" alt="">
+              <span class="tray-media-overlay" id="tray-media-overlay">▶</span>
+            </button>
+            <button class="tray-media-next" id="tray-media-next" title="Next">
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                <path d="M5 3 L11 8 L5 13 Z M12 3 L12 13" fill="currentColor" stroke="currentColor" stroke-width="0.5" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
           <div class="tray-chip net-chip" id="tray-net" title="Network">
             <span class="tray-icon" id="tray-net-icon">●</span>
           </div>
