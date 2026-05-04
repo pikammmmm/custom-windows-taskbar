@@ -78,6 +78,23 @@ pub fn assert_topmost(hwnd: isize) {
     }
 }
 
+/// Move the window AND keep it pinned at HWND_TOPMOST in a single
+/// SetWindowPos call. Tauri's `WebviewWindow::set_position` calls
+/// SetWindowPos with HWND_TOP (regular top, not topmost) which silently
+/// drops us out of the topmost band — that's why other apps could peek
+/// through the dock during the slide-in animation. Always use this
+/// helper from animation paths so each frame re-asserts topmost too.
+pub fn set_position_topmost(hwnd: isize, x: i32, y: i32) {
+    unsafe {
+        let _ = SetWindowPos(
+            HWND(hwnd as *mut _),
+            HWND_TOPMOST,
+            x, y, 0, 0,
+            SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
 /// Strip WS_CAPTION / WS_SYSMENU / WS_MINIMIZEBOX / WS_MAXIMIZEBOX /
 /// WS_THICKFRAME / WS_BORDER from the window's GWL_STYLE. Tauri's
 /// `.decorations(false)` should already do this, but on some Win11 builds the

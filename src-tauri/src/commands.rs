@@ -926,8 +926,8 @@ pub fn hide_clipboard(app: AppHandle) -> Result<(), String> {
 pub fn clipboard_use_entry(app: AppHandle, text: String) -> Result<(), String> {
     use std::time::Duration;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-        VIRTUAL_KEY, VK_CONTROL,
+        MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+        KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC, VIRTUAL_KEY, VK_CONTROL,
     };
 
     app_actions::copy_to_clipboard(&text).map_err(|e| e.to_string())?;
@@ -938,31 +938,39 @@ pub fn clipboard_use_entry(app: AppHandle, text: String) -> Result<(), String> {
     }
 
     let target = *pre_clipboard_fg().lock().unwrap();
-    // Restore focus on a short delay so the panel's hide() has time to
-    // fully relinquish; Windows occasionally races the SetForegroundWindow
-    // against the just-hidden window's WM_KILLFOCUS otherwise.
+    // Restore focus on a delay so the panel's hide() has fully relinquished
+    // — Windows races SetForegroundWindow against our window's WM_KILLFOCUS
+    // otherwise. 120ms is comfortably past the racing window on the slow
+    // Win11 builds I've seen and still feels instant to the user.
     //
-    // focus_aggressive — not focus — because raw SetForegroundWindow is
-    // blocked by Win11's foreground-window restrictions when called from
-    // a process that doesn't already own the foreground. AttachThreadInput
-    // sidesteps the restriction.
+    // focus_aggressive (AttachThreadInput) — not focus — because raw
+    // SetForegroundWindow is blocked by Win11's foreground-window
+    // restrictions when called from a process that doesn't already own
+    // the foreground.
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(60));
+        std::thread::sleep(Duration::from_millis(120));
         if target != 0 {
             let _ = win32::focus_aggressive(target);
+            // Tiny extra beat so the focus-change event has time to land
+            // in the target's window proc before SendInput fires keys.
+            std::thread::sleep(Duration::from_millis(30));
         }
-        // Synth Ctrl+V — keydown ctrl, keydown V, keyup V, keyup ctrl.
+
+        // Use scancode for V — robust against keyboard layouts that
+        // remap virtual keys (Dvorak, AZERTY, etc.). Ctrl is the same
+        // VK on every layout so we leave it as-is.
         unsafe {
+            let v_scan = MapVirtualKeyW(0x56, MAPVK_VK_TO_VSC) as u16;
             let inputs = [
-                kb(VK_CONTROL.0, false),
-                kb(0x56, false),
-                kb(0x56, true),
-                kb(VK_CONTROL.0, true),
+                kb_vk(VK_CONTROL.0, false),
+                kb_scan(v_scan, false),
+                kb_scan(v_scan, true),
+                kb_vk(VK_CONTROL.0, true),
             ];
             SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         }
 
-        unsafe fn kb(vk: u16, key_up: bool) -> INPUT {
+        unsafe fn kb_vk(vk: u16, key_up: bool) -> INPUT {
             INPUT {
                 r#type: INPUT_KEYBOARD,
                 Anonymous: INPUT_0 {
@@ -970,6 +978,22 @@ pub fn clipboard_use_entry(app: AppHandle, text: String) -> Result<(), String> {
                         wVk: VIRTUAL_KEY(vk),
                         wScan: 0,
                         dwFlags: if key_up { KEYEVENTF_KEYUP } else { Default::default() },
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            }
+        }
+        unsafe fn kb_scan(scan: u16, key_up: bool) -> INPUT {
+            let mut flags = KEYEVENTF_SCANCODE;
+            if key_up { flags |= KEYEVENTF_KEYUP; }
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(0),
+                        wScan: scan,
+                        dwFlags: flags,
                         time: 0,
                         dwExtraInfo: 0,
                     },

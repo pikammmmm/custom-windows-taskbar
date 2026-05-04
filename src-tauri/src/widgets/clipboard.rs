@@ -13,7 +13,9 @@ use anyhow::{anyhow, Result};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::HWND;
-use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
+use windows::Win32::System::DataExchange::{
+    CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+};
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 
 const CF_UNICODETEXT: u32 = 13;
@@ -132,8 +134,28 @@ pub fn clear() {
 /// when no text format is present — the caller treats both as "no change."
 fn read_clipboard_text() -> Result<String> {
     unsafe {
-        OpenClipboard(HWND(std::ptr::null_mut()))
-            .map_err(|e| anyhow!("OpenClipboard: {e}"))?;
+        // Skip the OpenClipboard syscall entirely when no text is on the
+        // clipboard (e.g., user copied an image or file). IsClipboardFormatAvailable
+        // doesn't require the clipboard to be open and is much cheaper.
+        if !IsClipboardFormatAvailable(CF_UNICODETEXT).is_ok() {
+            return Err(anyhow!("no CF_UNICODETEXT format"));
+        }
+        // OpenClipboard can transiently fail with ERROR_ACCESS_DENIED when
+        // another app holds it (Excel mid-edit, browser drag operation,
+        // installer dialog). Retry a few times with tiny backoffs — fixes
+        // the case where the very first poll after a copy raced the
+        // copying app's CloseClipboard.
+        let mut opened = false;
+        for delay_us in [0, 5_000, 15_000, 40_000] {
+            if delay_us > 0 { std::thread::sleep(Duration::from_micros(delay_us)); }
+            if OpenClipboard(HWND(std::ptr::null_mut())).is_ok() {
+                opened = true;
+                break;
+            }
+        }
+        if !opened {
+            return Err(anyhow!("OpenClipboard failed after retries"));
+        }
         let result = (|| -> Result<String> {
             let h = GetClipboardData(CF_UNICODETEXT)
                 .map_err(|e| anyhow!("GetClipboardData: {e}"))?;
