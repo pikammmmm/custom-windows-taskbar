@@ -251,7 +251,11 @@ fn main() {
 
             windows_setup::create_windows(app)?;
             app_tracker::spawn_poller(app.handle().clone(), std::time::Duration::from_millis(500));
-            widget_state::spawn(app.handle().clone(), std::time::Duration::from_secs(1));
+            // 400ms tick — fast enough that a volume nudge or a network
+            // status change shows up almost immediately on the dock and
+            // HUD. The min_gap inside widget_state still throttles emits
+            // when nothing actually changed, so the IPC isn't busy.
+            widget_state::spawn(app.handle().clone(), std::time::Duration::from_millis(400));
 
             // Hide the original Windows taskbar so glassbar owns the strip.
             // Re-asserted periodically because shell restarts (explorer crash,
