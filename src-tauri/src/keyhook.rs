@@ -106,25 +106,39 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
                 // Win+V → glassbar clipboard history (replaces the OS panel).
                 // Win+X → glassbar power-user menu (replaces the OS quick-link).
-                // Both are gated on WIN_DOWN being set by us in this same hook
-                // so we know the user actually held Win — relying on
-                // GetAsyncKeyState here is racy because the OS may swallow Win
-                // during certain shell focus events.
+                //
+                // Cross-check the *real* Win state with GetAsyncKeyState
+                // before suppressing — relying purely on our WIN_DOWN flag
+                // was wrong: a Win-up that happens while an elevated window
+                // has focus never reaches our low-level hook (non-elevated
+                // processes can't observe input destined for elevated
+                // foregrounds), so WIN_DOWN can get stuck true. On the
+                // next plain V/X press it would falsely fire and open our
+                // panel even though the user wasn't holding Win at all.
                 //
                 // We DON'T inject a chord-marker here — doing it mid-keydown
                 // raced the OS detector and a rapid second press would still
                 // surface the OS Win+X menu. Instead we mark the chord as
                 // suppressed and handle it at Win-UP, exactly like the
                 // bare-Win-tap path does for the dock toggle.
-                if WIN_DOWN.load(Ordering::SeqCst) {
-                    if vk == VK_V {
-                        CLIPBOARD_REQUESTED.store(true, Ordering::SeqCst);
+                if vk == VK_V || vk == VK_X {
+                    let win_real = (GetAsyncKeyState(VK_LWIN.0 as i32) as u16 & 0x8000) != 0
+                                || (GetAsyncKeyState(VK_RWIN.0 as i32) as u16 & 0x8000) != 0;
+                    if !win_real {
+                        // Self-heal stale WIN_DOWN so chord-detect inside this
+                        // hook doesn't keep mis-firing on later keys either.
+                        WIN_DOWN.store(false, Ordering::SeqCst);
+                    } else {
+                        // Real Win+V / Win+X chord — own it.
+                        if vk == VK_V {
+                            CLIPBOARD_REQUESTED.store(true, Ordering::SeqCst);
+                        } else {
+                            POWER_MENU_REQUESTED.store(true, Ordering::SeqCst);
+                        }
                         WIN_CHORD_SUPPRESSED.store(true, Ordering::SeqCst);
-                        return LRESULT(1);
-                    }
-                    if vk == VK_X {
-                        POWER_MENU_REQUESTED.store(true, Ordering::SeqCst);
-                        WIN_CHORD_SUPPRESSED.store(true, Ordering::SeqCst);
+                        // Make sure our internal flag matches reality so the
+                        // Win-up handler does the right thing on release.
+                        WIN_DOWN.store(true, Ordering::SeqCst);
                         return LRESULT(1);
                     }
                 }
