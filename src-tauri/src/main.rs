@@ -179,6 +179,12 @@ fn main() {
             commands::show_menu,
             commands::get_menu_items,
             commands::hide_menu,
+            commands::show_power_menu,
+            commands::clipboard_history,
+            commands::show_clipboard,
+            commands::hide_clipboard,
+            commands::clipboard_use_entry,
+            commands::clipboard_clear,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
@@ -268,6 +274,11 @@ fn main() {
             // files show up without a glassbar restart.
             widgets::start_menu::spawn();
             widgets::files::spawn();
+
+            // Win+V clipboard history — polls CF_UNICODETEXT every ~700ms
+            // and keeps a 25-entry in-memory ring buffer. Memory-only by
+            // design (see widgets/clipboard.rs for rationale).
+            widgets::clipboard::spawn();
 
             // Re-strip decorations after Tauri's late init has settled — on
             // some Win11 builds the framework re-applies WS_CAPTION between

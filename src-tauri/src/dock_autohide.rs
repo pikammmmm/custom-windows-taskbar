@@ -114,6 +114,16 @@ fn run(app: AppHandle) {
             show_spotlight(&app);
         }
 
+        // Win+V — clipboard history panel (replaces the OS one).
+        if keyhook::take_clipboard_request() {
+            let _ = commands::show_clipboard(app.clone());
+        }
+
+        // Win+X — power-user menu (replaces the OS one).
+        if keyhook::take_power_menu_request() {
+            let _ = commands::show_power_menu(app.clone());
+        }
+
         // Win-key tap → toggle dock visibility. The Start button on the
         // dock is the dedicated launcher entry point, so Win is freed up
         // for "show me the dock" — the gesture most people associate with

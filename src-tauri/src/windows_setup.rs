@@ -90,6 +90,25 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     // Like the right-click menu, spotlight needs focus for keyboard input;
     // do NOT mark it no-activate.
 
+    // Win+V clipboard history panel. Hidden until show_clipboard fires —
+    // same lifecycle as the spotlight launcher. Needs focus (no NOACTIVATE)
+    // so arrow-key navigation + Enter-to-paste work.
+    let clipboard = WebviewWindowBuilder::new(app, "clipboard", WebviewUrl::App("clipboard/index.html".into()))
+        .title("")
+        .inner_size(440.0, 520.0)
+        .position((screen_w - 440.0) / 2.0, screen_h / 5.0)
+        .decorations(false)
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .build()?;
+    force_webview_transparent(&clipboard);
+    apply_glass(&clipboard);
+
     // Pre-create the right-click context menu window. Hidden until something
     // calls `show_menu`. Fixed initial size; show_menu re-sizes per content.
     let menu = WebviewWindowBuilder::new(app, "menu", WebviewUrl::App("menu/index.html".into()))
