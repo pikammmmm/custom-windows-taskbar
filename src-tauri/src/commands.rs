@@ -1,6 +1,6 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
 use crate::win32::CommandHidden;
-use crate::widgets::{audio, files, media, start_menu, warp, weather};
+use crate::widgets::{audio, clipboard as clip, files, media, start_menu, warp, weather};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -761,4 +761,198 @@ pub fn hide_menu(app: AppHandle) -> Result<(), String> {
     }
     clear_menu_shown_at();
     Ok(())
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Win+X power-user menu — replaces Windows' built-in WinX popup with the
+// glassbar-themed menu window. Items are mostly `launch_uri` (settings
+// pages + .msc consoles) so we don't need bespoke handlers per row.
+// ────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn show_power_menu(app: AppHandle) -> Result<(), String> {
+    use serde_json::json;
+    let items = json!([
+        { "label": "Apps & Features",       "action": "launch_uri", "args": { "uri": "ms-settings:appsfeatures" } },
+        { "label": "Power Options",         "action": "launch_uri", "args": { "uri": "ms-settings:powersleep" } },
+        { "label": "Settings",              "action": "launch_uri", "args": { "uri": "ms-settings:" } },
+        { "label": "Network Connections",   "action": "launch_uri", "args": { "uri": "ms-settings:network-status" } },
+        { "kind":  "separator" },
+        { "label": "Device Manager",        "action": "launch", "args": { "path": "devmgmt.msc" } },
+        { "label": "Disk Management",       "action": "launch", "args": { "path": "diskmgmt.msc" } },
+        { "label": "Computer Management",   "action": "launch", "args": { "path": "compmgmt.msc" } },
+        { "label": "Event Viewer",          "action": "launch", "args": { "path": "eventvwr.msc" } },
+        { "label": "Task Manager",          "action": "launch", "args": { "path": "taskmgr.exe" } },
+        { "kind":  "separator" },
+        { "label": "Terminal",              "action": "launch", "args": { "path": "wt.exe" } },
+        { "label": "Terminal (Admin)",      "action": "run_as_admin", "args": { "path": "wt.exe" } },
+        { "label": "File Explorer",         "action": "launch", "args": { "path": "explorer.exe" } },
+        { "label": "Search",                "action": "show_spotlight", "args": {} },
+        { "kind":  "separator" },
+        { "label": "Sign out",              "action": "power_action", "args": { "action": "signout" } },
+        { "label": "Lock",                  "action": "power_action", "args": { "action": "lock" } },
+        { "label": "Sleep",                 "action": "power_action", "args": { "action": "sleep" } },
+        { "label": "Restart",               "action": "power_action", "args": { "action": "restart" }, "danger": true },
+        { "label": "Shut down",             "action": "power_action", "args": { "action": "shutdown" }, "danger": true },
+    ]);
+
+    // Anchor the menu in the bottom-left corner of the primary monitor —
+    // that's where the real Win+X opens, hugging the start area. show_menu
+    // anchors the menu's bottom-right at the cursor coords we hand it, so
+    // (240, screen_h - 60) lands the menu just above-and-left of the dock,
+    // mirroring the OS placement.
+    let win = app.get_webview_window("menu")
+        .ok_or_else(|| "menu window missing".to_string())?;
+    let monitor = win.current_monitor().ok().flatten()
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let mon_h = monitor.size().height as i32;
+    show_menu(app, ShowMenuArgs {
+        items,
+        x: 240,
+        y: mon_h - 60,
+        // Match the menu's natural width — show_menu re-clamps if needed.
+        width: 220,
+        // ~22 rows × 30px + some padding. show_menu clamps if it would
+        // spill off the top.
+        height: 560,
+    })
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Win+V clipboard history panel — read live history, set the clipboard
+// when the user picks an entry, paste into the previously-focused window.
+// ────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct ClipboardItem {
+    pub text: String,
+    /// Seconds since the entry was captured. Frontend formats as "just
+    /// now" / "5m ago" / "2h ago" without us shipping a timezone-aware
+    /// timestamp through the IPC boundary.
+    pub age_secs: u64,
+}
+
+#[tauri::command]
+pub fn clipboard_history() -> Vec<ClipboardItem> {
+    clip::history().into_iter().map(|e| ClipboardItem {
+        text: e.text,
+        age_secs: e.at.elapsed().as_secs(),
+    }).collect()
+}
+
+/// Track which HWND was foreground right before we showed the clipboard
+/// panel. After the user picks an entry we restore focus there and synth
+/// Ctrl+V — same flow as Windows' own Win+V.
+fn pre_clipboard_fg() -> &'static Mutex<isize> {
+    static SLOT: OnceLock<Mutex<isize>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(0))
+}
+
+#[tauri::command]
+pub fn show_clipboard(app: AppHandle) -> Result<(), String> {
+    // Capture the working-window HWND BEFORE the panel takes focus, so we
+    // can paste back into it after the user picks an entry.
+    *pre_clipboard_fg().lock().unwrap() = win32::foreground_hwnd();
+
+    let win = app.get_webview_window("clipboard")
+        .ok_or_else(|| "clipboard window missing".to_string())?;
+    let monitor = win.current_monitor().ok().flatten()
+        .ok_or_else(|| "no current monitor".to_string())?;
+    let mon_w = monitor.size().width as i32;
+    let mon_h = monitor.size().height as i32;
+    let scale = monitor.scale_factor();
+    // Same footprint as the spotlight launcher — it's the closest sibling
+    // and the consistency makes the panel feel like part of the family.
+    let w = (440.0 * scale).round() as i32;
+    let h = (520.0 * scale).round() as i32;
+    let x = (mon_w - w) / 2;
+    // Slightly higher than spotlight (1/3.5) — clipboard panels are
+    // taller, and starting higher keeps the panel from clipping the dock.
+    let y = (mon_h as f64 / 5.0) as i32;
+    win.set_size(PhysicalSize::new(w as u32, h as u32))
+        .map_err(|e| e.to_string())?;
+    win.set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    let _ = win.set_focus();
+    if let Ok(hwnd) = win.hwnd() {
+        let h = hwnd.0 as isize;
+        crate::dwm::strip_decorations(h);
+        crate::dwm::suppress_nc_rendering(h);
+    }
+    let _ = app.emit_to("clipboard", "clipboard:show", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn hide_clipboard(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("clipboard") {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Set the clipboard to `text`, hide the panel, restore focus to the
+/// window that had it before the panel opened, and synthesise Ctrl+V so
+/// the text lands wherever the user was actively typing.
+#[tauri::command]
+pub fn clipboard_use_entry(app: AppHandle, text: String) -> Result<(), String> {
+    use std::time::Duration;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+        VIRTUAL_KEY, VK_CONTROL,
+    };
+
+    app_actions::copy_to_clipboard(&text).map_err(|e| e.to_string())?;
+    clip::note_self_write();
+
+    if let Some(win) = app.get_webview_window("clipboard") {
+        let _ = win.hide();
+    }
+
+    let target = *pre_clipboard_fg().lock().unwrap();
+    // Restore focus on a short delay so the panel's hide() has time to
+    // fully relinquish; Windows occasionally races the SetForegroundWindow
+    // against the just-hidden window's WM_KILLFOCUS otherwise.
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(60));
+        if target != 0 {
+            let _ = win32::focus(target);
+        }
+        // Synth Ctrl+V — keydown ctrl, keydown V, keyup V, keyup ctrl.
+        unsafe {
+            let inputs = [
+                kb(VK_CONTROL.0, false),
+                kb(0x56, false),
+                kb(0x56, true),
+                kb(VK_CONTROL.0, true),
+            ];
+            SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        }
+
+        unsafe fn kb(vk: u16, key_up: bool) -> INPUT {
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: VIRTUAL_KEY(vk),
+                        wScan: 0,
+                        dwFlags: if key_up { KEYEVENTF_KEYUP } else { Default::default() },
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// Clear the in-memory clipboard history. Hooked up to the Clear button
+/// in the panel's footer.
+#[tauri::command]
+pub fn clipboard_clear() {
+    clip::clear();
 }

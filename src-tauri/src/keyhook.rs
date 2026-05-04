@@ -9,10 +9,17 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
+// Bare-bones VK codes for chord detection — windows-rs doesn't expose these
+// as named constants the way it does for the modifier keys.
+const VK_V: u32 = 0x56;
+const VK_X: u32 = 0x58;
+
 static WIN_DOWN: AtomicBool = AtomicBool::new(false);
 static CHORD_USED: AtomicBool = AtomicBool::new(false);
 static TOGGLE_REQUESTED: AtomicBool = AtomicBool::new(false);
 static SPOTLIGHT_REQUESTED: AtomicBool = AtomicBool::new(false);
+static CLIPBOARD_REQUESTED: AtomicBool = AtomicBool::new(false);
+static POWER_MENU_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 const LLKHF_INJECTED: u32 = 0x10;
 
@@ -25,6 +32,16 @@ pub fn take_toggle_request() -> bool {
 /// Returns and clears the pending spotlight request — Ctrl+Alt+Space.
 pub fn take_spotlight_request() -> bool {
     SPOTLIGHT_REQUESTED.swap(false, Ordering::AcqRel)
+}
+
+/// Returns and clears the pending clipboard-history request — Win+V.
+pub fn take_clipboard_request() -> bool {
+    CLIPBOARD_REQUESTED.swap(false, Ordering::AcqRel)
+}
+
+/// Returns and clears the pending power-user-menu request — Win+X.
+pub fn take_power_menu_request() -> bool {
+    POWER_MENU_REQUESTED.swap(false, Ordering::AcqRel)
 }
 
 /// Spawn a dedicated thread that installs a low-level keyboard hook + runs
@@ -81,6 +98,33 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                         return LRESULT(1); // suppress so other apps don't see it
                     }
                 }
+                // Win+V → glassbar clipboard history (replaces the OS panel).
+                // Win+X → glassbar power-user menu (replaces the OS quick-link).
+                // Both are gated on WIN_DOWN being set by us in this same hook
+                // so we know the user actually held Win — relying on
+                // GetAsyncKeyState here is racy because the OS may swallow Win
+                // during certain shell focus events.
+                //
+                // When we suppress one of these we also synth a fake Ctrl tap
+                // so the OS's own Win-tap detector sees a chord and doesn't
+                // open Start when the user releases Win. Without this:
+                //   - we return LRESULT(1) → V never reaches the OS
+                //   - OS sees only Win-down then Win-up
+                //   - OS opens Start menu on top of our panel
+                // The Ctrl-tap is the same trick `synthesise_chord_then_release_win`
+                // uses for the Win-alone-tap dock toggle.
+                if WIN_DOWN.load(Ordering::SeqCst) {
+                    if vk == VK_V {
+                        CLIPBOARD_REQUESTED.store(true, Ordering::SeqCst);
+                        synthesise_ctrl_chord_marker();
+                        return LRESULT(1);
+                    }
+                    if vk == VK_X {
+                        POWER_MENU_REQUESTED.store(true, Ordering::SeqCst);
+                        synthesise_ctrl_chord_marker();
+                        return LRESULT(1);
+                    }
+                }
             }
             x if x == WM_KEYUP || x == WM_SYSKEYUP => {
                 if is_win {
@@ -110,6 +154,17 @@ unsafe fn synthesise_chord_then_release_win() {
         kb_event(VK_CONTROL.0, false),
         kb_event(VK_CONTROL.0, true),
         kb_event(VK_LWIN.0, true),
+    ];
+    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+}
+
+/// Inject a Ctrl-down/Ctrl-up while Win is still physically held — the
+/// OS's Win-tap detector counts this as a chord, so when the user later
+/// releases Win it won't pop the Start menu on top of our custom panel.
+unsafe fn synthesise_ctrl_chord_marker() {
+    let inputs = [
+        kb_event(VK_CONTROL.0, false),
+        kb_event(VK_CONTROL.0, true),
     ];
     SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
 }

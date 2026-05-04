@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>clipboard</title>
+<link rel="stylesheet" href="../shared/glass.css">
+<link rel="stylesheet" href="style.css"></head>
+<body>
+  <div class="glass-card clip-card">
+    <div class="clip-head">
+      <span class="clip-glyph">⎘</span>
+      <span class="clip-title">Clipboard history</span>
+      <button id="clear" class="clip-clear" title="Clear history">Clear</button>
+    </div>
+    <input id="filter" type="text" autocomplete="off" autocorrect="off"
+           spellcheck="false" placeholder="Filter…" class="clip-filter" />
+    <ul id="items" class="clip-items"></ul>
+    <div class="clip-foot">
+      <span>↑↓ navigate</span>
+      <span>↵ paste</span>
+      <span>esc close</span>
+    </div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body></html>
