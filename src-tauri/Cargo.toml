@@ -1,6 +1,6 @@
 [package]
 name = "glassbar"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 # Explicit default-run so `cargo build` / `cargo tauri build` pick
 # glassbar.exe as the main binary even with the second `uninstall`
@@ -71,6 +71,7 @@ webview2-com = "0.38"
 windows-core = "0.61"
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 tauri-plugin-drag = "2"
+arboard = { version = "3", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"

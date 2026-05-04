@@ -1,7 +1,15 @@
 //! Win+V clipboard history. Polls the system clipboard on a slow loop and
 //! keeps a ring buffer of the most recent text entries — Windows' built-in
 //! clipboard service is opt-in and exposes no public read API, so polling
-//! CF_UNICODETEXT is the universally-available path.
+//! is the universally-available path.
+//!
+//! Uses the `arboard` crate (which internally uses clipboard-win on Windows)
+//! for the actual read because the hand-rolled OpenClipboard/GetClipboardData
+//! dance was failing intermittently on real user systems — most likely
+//! because OpenClipboard from a non-message-loop thread is unreliable. arboard
+//! creates a hidden message-only window internally and runs the clipboard
+//! handshake against it, which is the "proper" Win32 way to do this from
+//! a background thread.
 //!
 //! We deliberately keep this in-memory only. A persistent on-disk history
 //! would create a sensitive footprint (passwords, tokens) the user didn't
@@ -12,14 +20,8 @@
 use anyhow::{anyhow, Result};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use windows::Win32::Foundation::HWND;
-use windows::Win32::System::DataExchange::{
-    CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
-};
-use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 
-const CF_UNICODETEXT: u32 = 13;
-const POLL_INTERVAL: Duration = Duration::from_millis(700);
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// How many entries to remember. Matches Windows' own Win+V default —
 /// enough to be useful, small enough that the dropdown stays scannable.
 const HISTORY_CAP: usize = 25;
@@ -62,10 +64,32 @@ pub fn spawn() {
     // Settings → System → Clipboard if they want the OS panel back.
     let _ = disable_os_clipboard_history();
 
-    std::thread::spawn(|| loop {
-        std::thread::sleep(POLL_INTERVAL);
-        if let Ok(text) = read_clipboard_text() {
-            ingest(text);
+    std::thread::spawn(|| {
+        // One arboard handle per thread — creating it once is cheaper
+        // than per-tick (each new() allocates a hidden message window).
+        // If construction fails, the thread quietly retries inside the
+        // loop so a transient COM-init race at startup doesn't kill it.
+        let mut clip: Option<arboard::Clipboard> = None;
+        loop {
+            std::thread::sleep(POLL_INTERVAL);
+            if clip.is_none() {
+                clip = arboard::Clipboard::new().ok();
+                if clip.is_none() { continue; }
+            }
+            let cb = clip.as_mut().unwrap();
+            match cb.get_text() {
+                Ok(text) => ingest(text),
+                Err(arboard::Error::ContentNotAvailable) => {
+                    // Clipboard has non-text content (image, file, etc.) —
+                    // expected, just nothing to capture this tick.
+                }
+                Err(_) => {
+                    // Drop the handle so the next tick rebuilds it. Some
+                    // failures (e.g. broken IPC after Explorer restart)
+                    // permanently invalidate an existing handle.
+                    clip = None;
+                }
+            }
         }
     });
 }
@@ -130,59 +154,3 @@ pub fn clear() {
     state().lock().unwrap().entries.clear();
 }
 
-/// Best-effort read of CF_UNICODETEXT. Errors when the clipboard is busy or
-/// when no text format is present — the caller treats both as "no change."
-fn read_clipboard_text() -> Result<String> {
-    unsafe {
-        // Skip the OpenClipboard syscall entirely when no text is on the
-        // clipboard (e.g., user copied an image or file). IsClipboardFormatAvailable
-        // doesn't require the clipboard to be open and is much cheaper.
-        if !IsClipboardFormatAvailable(CF_UNICODETEXT).is_ok() {
-            return Err(anyhow!("no CF_UNICODETEXT format"));
-        }
-        // OpenClipboard can transiently fail with ERROR_ACCESS_DENIED when
-        // another app holds it (Excel mid-edit, browser drag operation,
-        // installer dialog). Retry a few times with tiny backoffs — fixes
-        // the case where the very first poll after a copy raced the
-        // copying app's CloseClipboard.
-        let mut opened = false;
-        for delay_us in [0, 5_000, 15_000, 40_000] {
-            if delay_us > 0 { std::thread::sleep(Duration::from_micros(delay_us)); }
-            if OpenClipboard(HWND(std::ptr::null_mut())).is_ok() {
-                opened = true;
-                break;
-            }
-        }
-        if !opened {
-            return Err(anyhow!("OpenClipboard failed after retries"));
-        }
-        let result = (|| -> Result<String> {
-            let h = GetClipboardData(CF_UNICODETEXT)
-                .map_err(|e| anyhow!("GetClipboardData: {e}"))?;
-            if h.is_invalid() {
-                return Err(anyhow!("no CF_UNICODETEXT"));
-            }
-            // GlobalLock returns *mut c_void; we treat it as *const u16 of
-            // an unknown length, terminated by a 0 word. There's no length
-            // probe API for HGLOBAL clipboard data so we walk until null.
-            let hglobal = windows::Win32::Foundation::HGLOBAL(h.0);
-            let ptr = GlobalLock(hglobal) as *const u16;
-            if ptr.is_null() {
-                return Err(anyhow!("GlobalLock null"));
-            }
-            let mut len = 0usize;
-            // Hard cap so a malformed buffer (no null terminator) can't
-            // walk us off the end of the heap. 1 MB of UTF-16 is ~500K
-            // chars — way more than any realistic clipboard text entry.
-            while len < 524_288 && *ptr.add(len) != 0 {
-                len += 1;
-            }
-            let slice = std::slice::from_raw_parts(ptr, len);
-            let s = String::from_utf16_lossy(slice);
-            let _ = GlobalUnlock(hglobal);
-            Ok(s)
-        })();
-        let _ = CloseClipboard();
-        result
-    }
-}
