@@ -16,6 +16,11 @@ const VK_X: u32 = 0x58;
 
 static WIN_DOWN: AtomicBool = AtomicBool::new(false);
 static CHORD_USED: AtomicBool = AtomicBool::new(false);
+/// Set when we suppress a Win+key chord we own (Win+V, Win+X). On Win-up
+/// we synthesise a Ctrl-tap + Win-up just like the bare Win-tap path —
+/// otherwise the OS never saw a real chord (we ate the V/X keydown) and
+/// would pop Start menu on top of our panel when the user releases Win.
+static WIN_CHORD_SUPPRESSED: AtomicBool = AtomicBool::new(false);
 static TOGGLE_REQUESTED: AtomicBool = AtomicBool::new(false);
 static SPOTLIGHT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static CLIPBOARD_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -84,6 +89,7 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                 if is_win {
                     WIN_DOWN.store(true, Ordering::SeqCst);
                     CHORD_USED.store(false, Ordering::SeqCst);
+                    WIN_CHORD_SUPPRESSED.store(false, Ordering::SeqCst);
                 } else if WIN_DOWN.load(Ordering::SeqCst) {
                     // Any non-Win key while Win is held = chord (Win+R, Win+E, etc).
                     CHORD_USED.store(true, Ordering::SeqCst);
@@ -105,23 +111,20 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
                 // GetAsyncKeyState here is racy because the OS may swallow Win
                 // during certain shell focus events.
                 //
-                // When we suppress one of these we also synth a fake Ctrl tap
-                // so the OS's own Win-tap detector sees a chord and doesn't
-                // open Start when the user releases Win. Without this:
-                //   - we return LRESULT(1) → V never reaches the OS
-                //   - OS sees only Win-down then Win-up
-                //   - OS opens Start menu on top of our panel
-                // The Ctrl-tap is the same trick `synthesise_chord_then_release_win`
-                // uses for the Win-alone-tap dock toggle.
+                // We DON'T inject a chord-marker here — doing it mid-keydown
+                // raced the OS detector and a rapid second press would still
+                // surface the OS Win+X menu. Instead we mark the chord as
+                // suppressed and handle it at Win-UP, exactly like the
+                // bare-Win-tap path does for the dock toggle.
                 if WIN_DOWN.load(Ordering::SeqCst) {
                     if vk == VK_V {
                         CLIPBOARD_REQUESTED.store(true, Ordering::SeqCst);
-                        synthesise_ctrl_chord_marker();
+                        WIN_CHORD_SUPPRESSED.store(true, Ordering::SeqCst);
                         return LRESULT(1);
                     }
                     if vk == VK_X {
                         POWER_MENU_REQUESTED.store(true, Ordering::SeqCst);
-                        synthesise_ctrl_chord_marker();
+                        WIN_CHORD_SUPPRESSED.store(true, Ordering::SeqCst);
                         return LRESULT(1);
                     }
                 }
@@ -129,15 +132,22 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
             x if x == WM_KEYUP || x == WM_SYSKEYUP => {
                 if is_win {
                     let chord = CHORD_USED.load(Ordering::SeqCst);
+                    let suppressed = WIN_CHORD_SUPPRESSED.swap(false, Ordering::SeqCst);
                     WIN_DOWN.store(false, Ordering::SeqCst);
-                    if !chord {
-                        // Win was tapped alone. Suppress the user's Win-up so
-                        // the OS doesn't open Start, and synthesise a
-                        // Ctrl-tap + Win-up combo to (a) make the OS treat
-                        // Win as a modifier in a chord (no Start menu) and
-                        // (b) properly release the Win modifier state.
+                    // Three cases now:
+                    //   1. Naked Win tap (no chord, nothing suppressed) →
+                    //      synth+suppress + fire dock toggle.
+                    //   2. Real Win+key chord (chord, not suppressed) →
+                    //      pass Win-up through; OS already saw a chord.
+                    //   3. Suppressed chord (Win+V/Win+X) → synth+suppress
+                    //      so OS thinks a chord happened and doesn't open
+                    //      Start on top of our panel. Do NOT fire dock
+                    //      toggle — the chord did its own thing.
+                    if !chord || suppressed {
                         synthesise_chord_then_release_win();
-                        TOGGLE_REQUESTED.store(true, Ordering::SeqCst);
+                        if !chord {
+                            TOGGLE_REQUESTED.store(true, Ordering::SeqCst);
+                        }
                         return LRESULT(1);
                     }
                 }
@@ -154,17 +164,6 @@ unsafe fn synthesise_chord_then_release_win() {
         kb_event(VK_CONTROL.0, false),
         kb_event(VK_CONTROL.0, true),
         kb_event(VK_LWIN.0, true),
-    ];
-    SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-}
-
-/// Inject a Ctrl-down/Ctrl-up while Win is still physically held — the
-/// OS's Win-tap detector counts this as a chord, so when the user later
-/// releases Win it won't pop the Start menu on top of our custom panel.
-unsafe fn synthesise_ctrl_chord_marker() {
-    let inputs = [
-        kb_event(VK_CONTROL.0, false),
-        kb_event(VK_CONTROL.0, true),
     ];
     SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
 }
