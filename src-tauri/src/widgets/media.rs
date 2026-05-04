@@ -27,6 +27,12 @@ pub struct MediaState {
     /// tick — thumbnail extraction does an async stream read which would
     /// otherwise dominate the snapshot loop.
     pub thumbnail: Option<String>,
+    /// SMTC source app identifier — typically an AUMID like
+    /// "Spotify.exe" or "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify",
+    /// or for browser tabs something like "Microsoft.MicrosoftEdge..!App".
+    /// Frontend uses this to draw a meaningful fallback letter when no
+    /// thumbnail is supplied (S for Spotify, Y for YouTube tabs, etc.).
+    pub source_app: Option<String>,
 }
 
 pub fn current() -> Result<MediaState> {
@@ -49,12 +55,15 @@ pub fn current() -> Result<MediaState> {
     }
     let thumbnail = cache.1.clone();
 
+    let source_app = session.SourceAppUserModelId().ok().map(|s| s.to_string());
+
     Ok(MediaState {
         title,
         artist,
         playing: info.PlaybackStatus()? == Status::Playing,
         has_session: true,
         thumbnail,
+        source_app,
     })
 }
 
