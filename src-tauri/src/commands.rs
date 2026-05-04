@@ -487,14 +487,28 @@ pub fn get_autostart() -> bool {
     autostart::is_enabled()
 }
 
+/// Set the system master volume. Returns the percent Windows actually
+/// committed (endpoints snap to discrete steps), and broadcasts an
+/// `audio:changed` event so the dock chip + HUD update without waiting
+/// for the next snapshot tick. The HUD slider uses the returned value
+/// to keep its user-intent cache in sync — without that the slider
+/// would visually jump 1-2 percentage points when intent expires.
 #[tauri::command]
-pub fn set_volume(percent: u8) -> Result<(), String> {
-    audio::set_volume(percent)
+pub fn set_volume(app: AppHandle, percent: u8) -> Result<u8, String> {
+    let actual = audio::set_volume(percent)?;
+    let _ = app.emit("audio:changed", actual);
+    Ok(actual)
 }
 
 #[tauri::command]
-pub fn set_mute(muted: bool) -> Result<(), String> {
-    audio::set_mute(muted)
+pub fn set_mute(app: AppHandle, muted: bool) -> Result<(), String> {
+    audio::set_mute(muted)?;
+    // Re-broadcast current volume + new mute state via the snapshot path
+    // — there's no per-state event for mute; the next snapshot tick will
+    // reflect it within ~400ms. (Skipping a synthetic event here keeps
+    // the wire format simple.)
+    let _ = app.emit("audio:mute-changed", muted);
+    Ok(())
 }
 
 #[tauri::command]

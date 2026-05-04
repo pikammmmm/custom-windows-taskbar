@@ -46,27 +46,14 @@ pub fn current() -> AudioState {
     unsafe {
         let Some(ep) = endpoint() else { return AudioState::default() };
         let muted = ep.GetMute().map(|b| b.as_bool()).unwrap_or(false);
-
-        // Read the displayed percentage via GetVolumeStepInfo so it matches
-        // Windows' system-tray slider exactly. Endpoints typically expose
-        // 50 steps (2% each), so the scalar value 0.49 actually corresponds
-        // to step 25/50 = 50% (rounded up to the next step boundary, which
-        // is what Windows shows). Using GetMasterVolumeLevelScalar * 100
-        // gave us 49% in that case, which the user reads as "off by one"
-        // every time they nudge the volume.
-        let mut step: u32 = 0;
-        let mut step_count: u32 = 0;
-        let percent = if ep.GetVolumeStepInfo(&mut step, &mut step_count).is_ok()
-            && step_count > 0
-        {
-            ((step as u64 * 100 / step_count as u64).min(100)) as u8
-        } else {
-            // Step info unavailable (rare — virtual endpoints, certain
-            // remote-desktop audio paths). Fall back to the scalar.
-            let volume = ep.GetMasterVolumeLevelScalar().unwrap_or(0.0);
-            (volume.clamp(0.0, 1.0) * 100.0).round() as u8
-        };
-
+        // Use scalar * 100 — same value we WRITE in set_volume, so the
+        // round-trip is consistent. GetVolumeStepInfo was tried but caused
+        // a 75 → 74 ping-pong: we'd write scalar 0.75, the endpoint would
+        // snap it to step 37/50 = 74, the snapshot would emit 74, and the
+        // HUD slider would jump back to 74 the moment the user-intent
+        // window expired. Scalar in / scalar out avoids the mismatch.
+        let volume = ep.GetMasterVolumeLevelScalar().unwrap_or(0.0);
+        let percent = (volume.clamp(0.0, 1.0) * 100.0).round() as u8;
         AudioState {
             volume_percent: percent,
             muted,
@@ -75,13 +62,20 @@ pub fn current() -> AudioState {
     }
 }
 
-pub fn set_volume(percent: u8) -> Result<(), String> {
+/// Set the system master volume. Returns the percentage Windows actually
+/// committed — endpoints may snap to discrete steps so the requested
+/// percent and the resulting percent can differ by 1-2. Callers use the
+/// returned value to keep their UI in sync.
+pub fn set_volume(percent: u8) -> Result<u8, String> {
     ensure_com();
     let v = (percent.min(100) as f32) / 100.0;
     unsafe {
         let ep = endpoint().ok_or_else(|| "no audio device".to_string())?;
         ep.SetMasterVolumeLevelScalar(v, std::ptr::null::<GUID>())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        // Read back the actual scalar — the endpoint may have snapped.
+        let actual = ep.GetMasterVolumeLevelScalar().unwrap_or(v);
+        Ok((actual.clamp(0.0, 1.0) * 100.0).round() as u8)
     }
 }
 

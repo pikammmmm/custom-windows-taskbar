@@ -483,13 +483,32 @@ el.warpBtn.addEventListener('contextmenu', (e) => {
 
 // Media-control click handlers moved to dock/app.js (chip lives there now).
 
-el.volSlider.addEventListener('input', (e) => {
+el.volSlider.addEventListener('input', async (e) => {
   const pct = parseInt(e.target.value, 10);
+  // Optimistic UI first so the drag feels instant.
   volumeIntent = pct;
   volumeIntentAt = Date.now();
   el.volPct.textContent = `${pct}%`;
   el.volIcon.textContent = volIconFor(pct, false);
-  invoke('set_volume', { percent: pct }).catch(() => {});
+  try {
+    // set_volume now returns the percent Windows actually committed —
+    // endpoints snap to discrete steps so 75% can become 74 or 76. We
+    // re-sync the intent to the returned value so the slider doesn't
+    // visually jump when the intent window expires and the next
+    // snapshot lands.
+    const actual = await invoke('set_volume', { percent: pct });
+    if (typeof actual === 'number') {
+      volumeIntent = actual;
+      volumeIntentAt = Date.now();
+      if (actual !== pct) {
+        if (document.activeElement !== el.volSlider) {
+          el.volSlider.value = actual;
+        }
+        el.volPct.textContent = `${actual}%`;
+        el.volIcon.textContent = volIconFor(actual, false);
+      }
+    }
+  } catch {}
 });
 el.volIcon.addEventListener('click', () => {
   if (!lastSnapshot || !lastSnapshot.audio) return;

@@ -464,6 +464,32 @@ function volIconFor(pct, muted) {
   return '🔊';
 }
 
+/// Pick a single letter for the media-chip fallback from the SMTC
+/// source app's AUMID. Strips the package-family prefix (everything
+/// before the first underscore) and the "!Method" suffix so we get
+/// the human-recognisable app name for things like
+/// "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify" → "S".
+function mediaFallbackGlyph(sourceApp) {
+  if (!sourceApp) return '♪';
+  let s = sourceApp;
+  // UWP pattern: "Publisher.AppName_hash!Entry" → take "Entry" portion
+  // when present, else the AppName portion. Both lead with a recognisable
+  // human label.
+  const bang = s.indexOf('!');
+  if (bang !== -1 && bang + 1 < s.length) {
+    s = s.slice(bang + 1);
+  } else {
+    // Strip "Publisher." prefix on AUMIDs without an entry-point suffix.
+    const dot = s.indexOf('.');
+    if (dot !== -1 && dot + 1 < s.length) {
+      s = s.slice(dot + 1);
+    }
+    s = s.replace(/\.exe$/i, '');
+  }
+  const ch = s.trim().charAt(0);
+  return ch ? ch.toUpperCase() : '♪';
+}
+
 function updateTray(snap) {
   if (snap.audio && snap.audio.has_device) {
     tray.volIcon.textContent = volIconFor(snap.audio.volume_percent, snap.audio.muted);
@@ -494,10 +520,13 @@ function updateTray(snap) {
       tray.mediaImg.style.display = '';
       tray.mediaFallback.style.display = 'none';
     } else {
-      // No artwork from the source — show the gradient + ♪ fallback
-      // instead of an empty square so the chip still reads as media.
+      // No artwork from the source — show the gradient with the source
+      // app's first letter (S for Spotify, Y for YouTube tab, etc.) so
+      // the chip carries some identity. Falls back to ♪ for sessions
+      // that don't expose a SourceAppUserModelId at all.
       tray.mediaImg.removeAttribute('src');
       tray.mediaImg.style.display = 'none';
+      tray.mediaFallback.textContent = mediaFallbackGlyph(m.source_app);
       tray.mediaFallback.style.display = '';
       lastThumbnailSig = '';
     }
@@ -720,6 +749,16 @@ async function init() {
   await listen('pinned:changed', (e) => { pinned = e.payload; renderCenter(); });
   await listen('apps:changed',   (e) => { running = e.payload; renderCenter(); });
   await listen('hud:update',     (e) => updateTray(e.payload));
+  // Instant volume update — fires from set_volume so the chip doesn't
+  // wait for the next snapshot tick (~400ms). Without this listener the
+  // dock chip lagged behind the HUD slider and the user saw it as
+  // "the taskbar volume doesn't change."
+  await listen('audio:changed', (e) => {
+    const pct = e.payload;
+    if (typeof pct !== 'number') return;
+    tray.volIcon.textContent = volIconFor(pct, false);
+    tray.volVal.textContent = `${pct}%`;
+  });
 
   // Drag-and-drop pinning. Tauri's window-scoped drag-drop event delivers
   // an array of OS file paths on drop; we hand them to pin_dropped which
