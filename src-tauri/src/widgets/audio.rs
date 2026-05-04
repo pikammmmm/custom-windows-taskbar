@@ -33,7 +33,11 @@ fn ensure_com() {
 unsafe fn endpoint() -> Option<IAudioEndpointVolume> {
     let enumerator: IMMDeviceEnumerator =
         CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
-    let device = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia).ok()?;
+    // eConsole — what Windows' own taskbar volume flyout reads.
+    // Previously eMultimedia, which on systems with multiple defaults
+    // (e.g. monitor speakers vs. headset DAC) reported a different
+    // device's level than what the user sees in the system tray.
+    let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
     device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None).ok()
 }
 

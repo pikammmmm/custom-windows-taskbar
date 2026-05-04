@@ -49,11 +49,16 @@ const tray = {
   time: document.getElementById('tray-time'),
   media: document.getElementById('tray-media'),
   mediaImg: document.getElementById('tray-media-img'),
+  mediaFallback: document.getElementById('tray-media-fallback'),
   mediaOverlay: document.getElementById('tray-media-overlay'),
   mediaPrev: document.getElementById('tray-media-prev'),
   mediaArt: document.getElementById('tray-media-art'),
   mediaNext: document.getElementById('tray-media-next'),
 };
+// Track the currently-displayed thumbnail so we know when to actually
+// touch the <img> src (which forces a re-decode). Comparing against the
+// element's existing src is unreliable — browsers normalise data URLs.
+let lastThumbnailSig = '';
 
 let pinned = [];
 let running = [];
@@ -477,18 +482,31 @@ function updateTray(snap) {
   if (m && m.has_session && m.title) {
     tray.media.hidden = false;
     if (m.thumbnail) {
-      tray.mediaImg.src = m.thumbnail;
+      // Cheap content fingerprint — last 64 chars of the data URL is
+      // enough to detect when Spotify swaps to a new cover even if the
+      // length is identical. Without this, repeated assignments to
+      // .src skip re-decoding and the old image stays on screen.
+      const sig = m.thumbnail.slice(-64);
+      if (sig !== lastThumbnailSig) {
+        lastThumbnailSig = sig;
+        tray.mediaImg.src = m.thumbnail;
+      }
       tray.mediaImg.style.display = '';
+      tray.mediaFallback.style.display = 'none';
     } else {
-      // No artwork from the source — keep the chip but blank the art slot.
+      // No artwork from the source — show the gradient + ♪ fallback
+      // instead of an empty square so the chip still reads as media.
       tray.mediaImg.removeAttribute('src');
       tray.mediaImg.style.display = 'none';
+      tray.mediaFallback.style.display = '';
+      lastThumbnailSig = '';
     }
     tray.mediaOverlay.textContent = m.playing ? '⏸' : '▶';
     const subtitle = [m.title, m.artist].filter(Boolean).join(' — ');
     tray.media.title = `${subtitle} (click to ${m.playing ? 'pause' : 'play'})`;
   } else {
     tray.media.hidden = true;
+    lastThumbnailSig = '';
   }
 }
 

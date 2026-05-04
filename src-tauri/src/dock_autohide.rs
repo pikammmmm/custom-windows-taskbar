@@ -14,7 +14,10 @@ const POLL_MS: u64 = 16;          // ~60 Hz so position interpolation looks smoo
 const HIDE_AFTER_MS: u128 = 1500;
 const TRIGGER_PX: i32 = 4;
 const SLIDE_MS: f64 = 260.0;      // length of the show/hide slide
-const TOPMOST_REASSERT_MS: u128 = 700;
+// Tightened from 700ms — apps that briefly steal HWND_TOPMOST (UAC prompts,
+// fullscreen videos, Win11's accessibility flyouts) could otherwise show
+// through the dock for almost a second on hover.
+const TOPMOST_REASSERT_MS: u128 = 150;
 
 pub fn spawn(app: AppHandle) {
     std::thread::spawn(move || run(app));
@@ -99,7 +102,15 @@ fn run(app: AppHandle) {
                     target_y = shown_y;
                     anim_from_y = shown_y;
                     anim_start = None;
-                    let _ = window.set_position(PhysicalPosition { x: dock_left, y: current_y });
+                    // Use SetWindowPos with HWND_TOPMOST instead of Tauri's
+                    // set_position — the latter uses HWND_TOP which drops us
+                    // out of the topmost band, letting other apps peek
+                    // through the dock during the slide-up.
+                    if dock_hwnd != 0 {
+                        dwm::set_position_topmost(dock_hwnd, dock_left, current_y);
+                    } else {
+                        let _ = window.set_position(PhysicalPosition { x: dock_left, y: current_y });
+                    }
                 } else {
                     start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, shown_y);
                 }
@@ -146,7 +157,11 @@ fn run(app: AppHandle) {
             let new_y = lerp(anim_from_y, target_y, eased);
             if new_y != current_y {
                 current_y = new_y;
-                let _ = window.set_position(PhysicalPosition { x: dock_left, y: current_y });
+                if dock_hwnd != 0 {
+                    dwm::set_position_topmost(dock_hwnd, dock_left, current_y);
+                } else {
+                    let _ = window.set_position(PhysicalPosition { x: dock_left, y: current_y });
+                }
             }
             if t >= 1.0 {
                 anim_start = None;

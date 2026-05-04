@@ -14,7 +14,7 @@ use windows::Media::Control::{
 /// occasionally lazily replaces the cover, browser tabs change favicons,
 /// some videos cycle keyframes) without re-doing the expensive async
 /// stream read every snapshot tick.
-const THUMBNAIL_TTL: Duration = Duration::from_secs(5);
+const THUMBNAIL_TTL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 pub struct MediaState {
