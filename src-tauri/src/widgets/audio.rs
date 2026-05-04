@@ -33,11 +33,11 @@ fn ensure_com() {
 unsafe fn endpoint() -> Option<IAudioEndpointVolume> {
     let enumerator: IMMDeviceEnumerator =
         CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
-    // eConsole — what Windows' own taskbar volume flyout reads.
-    // Previously eMultimedia, which on systems with multiple defaults
-    // (e.g. monitor speakers vs. headset DAC) reported a different
-    // device's level than what the user sees in the system tray.
-    let device = enumerator.GetDefaultAudioEndpoint(eRender, eConsole).ok()?;
+    // eMultimedia — most-common system default. eConsole was tried but on
+    // some systems (notably USB DACs) reports a different endpoint than
+    // the Windows tray slider controls, which made the displayed % look
+    // unrelated to the volume the user was actually adjusting.
+    let device = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia).ok()?;
     device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None).ok()
 }
 
@@ -45,10 +45,30 @@ pub fn current() -> AudioState {
     ensure_com();
     unsafe {
         let Some(ep) = endpoint() else { return AudioState::default() };
-        let volume = ep.GetMasterVolumeLevelScalar().unwrap_or(0.0);
         let muted = ep.GetMute().map(|b| b.as_bool()).unwrap_or(false);
+
+        // Read the displayed percentage via GetVolumeStepInfo so it matches
+        // Windows' system-tray slider exactly. Endpoints typically expose
+        // 50 steps (2% each), so the scalar value 0.49 actually corresponds
+        // to step 25/50 = 50% (rounded up to the next step boundary, which
+        // is what Windows shows). Using GetMasterVolumeLevelScalar * 100
+        // gave us 49% in that case, which the user reads as "off by one"
+        // every time they nudge the volume.
+        let mut step: u32 = 0;
+        let mut step_count: u32 = 0;
+        let percent = if ep.GetVolumeStepInfo(&mut step, &mut step_count).is_ok()
+            && step_count > 0
+        {
+            ((step as u64 * 100 / step_count as u64).min(100)) as u8
+        } else {
+            // Step info unavailable (rare — virtual endpoints, certain
+            // remote-desktop audio paths). Fall back to the scalar.
+            let volume = ep.GetMasterVolumeLevelScalar().unwrap_or(0.0);
+            (volume.clamp(0.0, 1.0) * 100.0).round() as u8
+        };
+
         AudioState {
-            volume_percent: (volume.clamp(0.0, 1.0) * 100.0).round() as u8,
+            volume_percent: percent,
             muted,
             has_device: true,
         }

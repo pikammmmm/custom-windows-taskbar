@@ -41,6 +41,14 @@ function showToast(text, kind) {
 let lastSnapshot = null;
 let runningApps = [];
 
+// Volume user-intent cache. Set when the user moves the slider so
+// render() can prefer it over snapshot.audio for ~1.2s — without
+// this guard a snapshot poll landing during the drag (or just after)
+// overwrites the slider with the previous value, making the drag
+// look like it snapped back to the old volume.
+let volumeIntent = null;
+let volumeIntentAt = 0;
+
 function fmtRate(bps) {
   if (bps < 1024) return `${bps.toFixed(0)} B/s`;
   if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
@@ -98,9 +106,19 @@ function render() {
 
   // Media controls live in the dock tray now — see ui/dock/app.js.
 
-  // Audio
+  // Audio — user-intent has priority over snapshot for ~1.2s after
+  // the user touches the slider. Without this guard, a snapshot poll
+  // that lands during/just-after the drag would overwrite the slider
+  // and the displayed % with the previous (stale) value, making the
+  // drag look like it "snapped back" to the old volume.
   const a = lastSnapshot.audio;
-  if (a && a.has_device) {
+  const recentDrag = volumeIntent !== null && (Date.now() - volumeIntentAt) < 1200;
+  if (recentDrag) {
+    el.volSlider.value = volumeIntent;
+    el.volPct.textContent = `${volumeIntent}%`;
+    el.volIcon.textContent = volIconFor(volumeIntent, false);
+  } else if (a && a.has_device) {
+    volumeIntent = null;
     if (document.activeElement !== el.volSlider) {
       el.volSlider.value = a.volume_percent;
     }
@@ -467,7 +485,10 @@ el.warpBtn.addEventListener('contextmenu', (e) => {
 
 el.volSlider.addEventListener('input', (e) => {
   const pct = parseInt(e.target.value, 10);
+  volumeIntent = pct;
+  volumeIntentAt = Date.now();
   el.volPct.textContent = `${pct}%`;
+  el.volIcon.textContent = volIconFor(pct, false);
   invoke('set_volume', { percent: pct }).catch(() => {});
 });
 el.volIcon.addEventListener('click', () => {
