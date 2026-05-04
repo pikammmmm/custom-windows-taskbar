@@ -7,6 +7,25 @@
   animation: menu-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* When the items list overflows the window's clamped height (small monitor
+   + long power menu, or many open windows in the right-click context
+   menu), let the inner list scroll instead of clipping rows off-screen.
+   min-height: 0 is critical — without it flex children refuse to shrink
+   below their intrinsic content height and overflow-y: auto stays inert. */
+#items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.20) transparent;
+}
+#items::-webkit-scrollbar { width: 6px; }
+#items::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
 @keyframes menu-in {
   from { opacity: 0; transform: translateY(4px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0)   scale(1); }
