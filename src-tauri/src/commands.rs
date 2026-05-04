@@ -703,7 +703,13 @@ pub fn show_menu(app: AppHandle, args: ShowMenuArgs) -> Result<(), String> {
     let mon_w = monitor.size().width as i32;
     let mon_h = monitor.size().height as i32;
     let w_px = (args.width as f64 * scale).round() as i32;
-    let h_px = (args.height as f64 * scale).round() as i32;
+    // Clamp the menu height to the monitor — without this a power-user menu
+    // taller than the screen would extend off-bottom and the rows you want
+    // would be unreachable. The CSS makes #items scroll inside the
+    // remaining space.
+    let mut h_px = (args.height as f64 * scale).round() as i32;
+    let max_h = mon_h - 16;
+    if h_px > max_h { h_px = max_h; }
     // Anchor the menu's top-right corner near the cursor — most right-clicks
     // happen on dock icons whose tooltips fly upward, so opening upward feels
     // natural. Clamp so it never spills past the right or top edge.
@@ -772,6 +778,17 @@ pub fn hide_menu(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn show_power_menu(app: AppHandle) -> Result<(), String> {
     use serde_json::json;
+    // Toggle: a second Win+X press while the menu is already up should
+    // dismiss it, not re-show. Without this the rapid-tap that users
+    // naturally do (Win+X, Win+X to "make sure it opened") races our
+    // keyhook + the focus-loss auto-hide and can leave the OS Win+X menu
+    // surfacing on the second press.
+    if let Some(win) = app.get_webview_window("menu") {
+        if win.is_visible().unwrap_or(false) {
+            return hide_menu(app);
+        }
+    }
+
     let items = json!([
         { "label": "Apps & Features",       "action": "launch_uri", "args": { "uri": "ms-settings:appsfeatures" } },
         { "label": "Power Options",         "action": "launch_uri", "args": { "uri": "ms-settings:powersleep" } },
@@ -850,6 +867,15 @@ fn pre_clipboard_fg() -> &'static Mutex<isize> {
 
 #[tauri::command]
 pub fn show_clipboard(app: AppHandle) -> Result<(), String> {
+    // Toggle on repeat press — same rationale as show_power_menu. Without
+    // this a rapid Win+V double-tap re-opens (and re-positions, and
+    // re-focuses) the panel, which can race the OS's own Win+V detector.
+    if let Some(win) = app.get_webview_window("clipboard") {
+        if win.is_visible().unwrap_or(false) {
+            return hide_clipboard(app);
+        }
+    }
+
     // Capture the working-window HWND BEFORE the panel takes focus, so we
     // can paste back into it after the user picks an entry.
     *pre_clipboard_fg().lock().unwrap() = win32::foreground_hwnd();
