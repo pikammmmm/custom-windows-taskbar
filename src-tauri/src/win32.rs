@@ -88,6 +88,39 @@ pub fn focus(hwnd: isize) -> Result<()> {
     Ok(())
 }
 
+/// SetForegroundWindow with the AttachThreadInput trick — modern Windows
+/// blocks raw SetForegroundWindow calls from a process that doesn't
+/// already own the foreground (the "Set Foreground Window restrictions"
+/// in the docs). Attaching our thread's input queue to the target's
+/// thread bypasses that restriction. Used by the clipboard paste flow:
+/// our panel just hid, focus needs to land on the user's working window
+/// before SendInput Ctrl+V fires.
+pub fn focus_aggressive(hwnd: isize) -> Result<()> {
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+
+    if hwnd == 0 { return Ok(()); }
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        if IsIconic(h).as_bool() {
+            let _ = ShowWindow(h, SW_RESTORE);
+        }
+        let mut pid: u32 = 0;
+        let target_thread = GetWindowThreadProcessId(h, Some(&mut pid));
+        let our_thread = GetCurrentThreadId();
+        if target_thread == 0 || target_thread == our_thread {
+            let _ = SetForegroundWindow(h);
+            return Ok(());
+        }
+        let _ = AttachThreadInput(our_thread, target_thread, true);
+        let _ = SetForegroundWindow(h);
+        // Detach immediately — leaving threads attached entangles their
+        // input state and breaks normal focus handling for the rest of
+        // the session.
+        let _ = AttachThreadInput(our_thread, target_thread, false);
+    }
+    Ok(())
+}
+
 pub fn minimize(hwnd: isize) -> Result<()> {
     unsafe {
         let _ = ShowWindow(HWND(hwnd as *mut _), SW_MINIMIZE);
