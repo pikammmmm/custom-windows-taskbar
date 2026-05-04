@@ -941,10 +941,15 @@ pub fn clipboard_use_entry(app: AppHandle, text: String) -> Result<(), String> {
     // Restore focus on a short delay so the panel's hide() has time to
     // fully relinquish; Windows occasionally races the SetForegroundWindow
     // against the just-hidden window's WM_KILLFOCUS otherwise.
+    //
+    // focus_aggressive — not focus — because raw SetForegroundWindow is
+    // blocked by Win11's foreground-window restrictions when called from
+    // a process that doesn't already own the foreground. AttachThreadInput
+    // sidesteps the restriction.
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(60));
         if target != 0 {
-            let _ = win32::focus(target);
+            let _ = win32::focus_aggressive(target);
         }
         // Synth Ctrl+V — keydown ctrl, keydown V, keyup V, keyup ctrl.
         unsafe {

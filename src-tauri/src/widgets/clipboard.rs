@@ -49,12 +49,34 @@ struct State {
 /// Spawn the polling thread. Idempotent in practice because main.rs
 /// only calls this once at startup.
 pub fn spawn() {
+    // Disable Windows' own clipboard-history feature so the OS Win+V panel
+    // can't surface alongside (or under) ours. Without this, suppressing
+    // the V keydown in the low-level hook isn't always enough — under the
+    // right timing the OS clipboard service still pops its own panel,
+    // which then peeks out from behind ours when the user taps Win+V a
+    // second time. Disabling the feature is the only durable fix.
+    //
+    // We don't restore this on shutdown — the user can re-enable in
+    // Settings → System → Clipboard if they want the OS panel back.
+    let _ = disable_os_clipboard_history();
+
     std::thread::spawn(|| loop {
         std::thread::sleep(POLL_INTERVAL);
         if let Ok(text) = read_clipboard_text() {
             ingest(text);
         }
     });
+}
+
+fn disable_os_clipboard_history() -> Result<()> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let (key, _) = hkcu.create_subkey("Software\\Microsoft\\Clipboard")
+        .map_err(|e| anyhow!("create Clipboard key: {e}"))?;
+    key.set_value("EnableClipboardHistory", &0u32)
+        .map_err(|e| anyhow!("set EnableClipboardHistory: {e}"))?;
+    Ok(())
 }
 
 fn ingest(text: String) {
