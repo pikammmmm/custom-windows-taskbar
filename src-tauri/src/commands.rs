@@ -493,11 +493,34 @@ pub fn get_autostart() -> bool {
 /// for the next snapshot tick. The HUD slider uses the returned value
 /// to keep its user-intent cache in sync — without that the slider
 /// would visually jump 1-2 percentage points when intent expires.
+///
+/// Also persists the committed value to settings.json so the HUD can
+/// seed its slider with it on reopen — without persistence the slider
+/// briefly flashed back to its HTML default (50%) on every show until
+/// the next snapshot tick (~400 ms) overwrote it. Save is best-effort:
+/// any write failure is logged but not surfaced.
 #[tauri::command]
 pub fn set_volume(app: AppHandle, percent: u8) -> Result<u8, String> {
     let actual = audio::set_volume(percent)?;
     let _ = app.emit("audio:changed", actual);
+    if let Ok(mut s) = config::load_settings() {
+        if s.volume_percent != Some(actual) {
+            s.volume_percent = Some(actual);
+            if let Err(e) = config::save_settings(&s) {
+                crate::glog!("set_volume: save settings failed: {e}");
+            }
+        }
+    }
     Ok(actual)
+}
+
+/// Returns the last-set volume from settings.json — None if the user
+/// hasn't moved the slider yet on this install. The HUD calls this on
+/// startup and on show-anim to seed the slider before the first snapshot
+/// tick lands, avoiding a brief flash to the HTML-default value.
+#[tauri::command]
+pub fn get_settings_volume() -> Option<u8> {
+    config::load_settings().ok().and_then(|s| s.volume_percent)
 }
 
 #[tauri::command]
@@ -854,20 +877,73 @@ pub fn show_power_menu(app: AppHandle) -> Result<(), String> {
 // when the user picks an entry, paste into the previously-focused window.
 // ────────────────────────────────────────────────────────────────────────
 
+/// Per-entry payload sent to the panel. The `kind` field is a tagged enum
+/// so the JS can render text rows and image previews differently without
+/// any null-checking on a single shared `text` field.
+#[derive(Serialize)]
+#[serde(tag = "kind")]
+pub enum ClipboardItemKind {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image")]
+    Image {
+        width: u32,
+        height: u32,
+        /// PNG data URL — drop into <img src=> to render the preview.
+        /// Capped at IMAGE_PREVIEW_BYTES so a 50 MP screenshot doesn't
+        /// blow up the IPC message.
+        data_url: Option<String>,
+        byte_size: usize,
+    },
+}
+
 #[derive(Serialize)]
 pub struct ClipboardItem {
-    pub text: String,
+    /// Stable entry id — handed back to clipboard_use_entry so we don't
+    /// have to ship full image payloads through the IPC just to identify
+    /// "the one the user clicked."
+    pub id: u64,
+    pub item: ClipboardItemKind,
     /// Seconds since the entry was captured. Frontend formats as "just
     /// now" / "5m ago" / "2h ago" without us shipping a timezone-aware
     /// timestamp through the IPC boundary.
     pub age_secs: u64,
 }
 
+/// Cap on the PNG payload we'll inline into the panel as a data URL. Big
+/// screenshots get rendered as a placeholder card with size info — paste
+/// still works because we hold the full PNG server-side.
+const IMAGE_PREVIEW_BYTES: usize = 750_000;
+
 #[tauri::command]
 pub fn clipboard_history() -> Vec<ClipboardItem> {
-    clip::history().into_iter().map(|e| ClipboardItem {
-        text: e.text,
-        age_secs: e.at.elapsed().as_secs(),
+    use base64::Engine;
+    let entries = clip::history();
+    crate::glog!("clipboard_history called, returning {} entries", entries.len());
+    entries.into_iter().map(|e| {
+        let item = match e.kind {
+            clip::ClipKind::Text(text) => ClipboardItemKind::Text { text },
+            clip::ClipKind::Image(img) => {
+                let byte_size = img.png.len();
+                let data_url = if byte_size <= IMAGE_PREVIEW_BYTES {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&img.png);
+                    Some(format!("data:image/png;base64,{b64}"))
+                } else {
+                    None
+                };
+                ClipboardItemKind::Image {
+                    width: img.width,
+                    height: img.height,
+                    data_url,
+                    byte_size,
+                }
+            }
+        };
+        ClipboardItem {
+            id: e.id,
+            item,
+            age_secs: e.at.elapsed().as_secs(),
+        }
     }).collect()
 }
 
@@ -881,11 +957,13 @@ fn pre_clipboard_fg() -> &'static Mutex<isize> {
 
 #[tauri::command]
 pub fn show_clipboard(app: AppHandle) -> Result<(), String> {
+    crate::glog!("show_clipboard invoked");
     // Toggle on repeat press — same rationale as show_power_menu. Without
     // this a rapid Win+V double-tap re-opens (and re-positions, and
     // re-focuses) the panel, which can race the OS's own Win+V detector.
     if let Some(win) = app.get_webview_window("clipboard") {
         if win.is_visible().unwrap_or(false) {
+            crate::glog!("show_clipboard: panel already visible, hiding");
             return hide_clipboard(app);
         }
     }
@@ -933,18 +1011,33 @@ pub fn hide_clipboard(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Set the clipboard to `text`, hide the panel, restore focus to the
-/// window that had it before the panel opened, and synthesise Ctrl+V so
-/// the text lands wherever the user was actively typing.
+/// Set the clipboard to the entry identified by `id`, hide the panel,
+/// restore focus to the window that had it before the panel opened, and
+/// synthesise Ctrl+V so the content lands wherever the user was actively
+/// typing. Dispatches on entry kind — text vs image — at the copy step.
 #[tauri::command]
-pub fn clipboard_use_entry(app: AppHandle, text: String) -> Result<(), String> {
+pub fn clipboard_use_entry(app: AppHandle, id: u64) -> Result<(), String> {
     use std::time::Duration;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
         KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC, VIRTUAL_KEY, VK_CONTROL,
     };
 
-    app_actions::copy_to_clipboard(&text).map_err(|e| e.to_string())?;
+    crate::glog!("clipboard_use_entry id={id}");
+    let entry = clip::find(id).ok_or_else(|| {
+        crate::glog!("clipboard_use_entry: id {id} not found");
+        "clipboard entry not found".to_string()
+    })?;
+
+    match &entry.kind {
+        clip::ClipKind::Text(text) => {
+            app_actions::copy_to_clipboard(text).map_err(|e| e.to_string())?;
+        }
+        clip::ClipKind::Image(img) => {
+            app_actions::copy_image_to_clipboard(img.width, img.height, &img.png)
+                .map_err(|e| e.to_string())?;
+        }
+    }
     clip::note_self_write();
 
     if let Some(win) = app.get_webview_window("clipboard") {

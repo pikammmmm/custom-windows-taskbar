@@ -515,6 +515,22 @@ el.volIcon.addEventListener('click', () => {
   invoke('set_mute', { muted: !lastSnapshot.audio.muted }).catch(() => {});
 });
 
+// Seed the slider + chip from the persisted volume so a HUD reopen shows
+// the user's last-set value immediately, without waiting for the first
+// snapshot tick (~400 ms) — that gap was visible as a brief flash to
+// the slider's HTML default (50%) on every show.
+async function seedVolumeFromSettings() {
+  try {
+    const seed = await invoke('get_settings_volume');
+    if (typeof seed !== 'number') return;
+    if (document.activeElement !== el.volSlider) {
+      el.volSlider.value = seed;
+    }
+    el.volPct.textContent = `${seed}%`;
+    el.volIcon.textContent = volIconFor(seed, false);
+  } catch {}
+}
+
 async function init() {
   await listen('hud:update', (e) => { lastSnapshot = e.payload; render(); });
   await listen('apps:changed', (e) => { runningApps = e.payload; renderApps(); });
@@ -529,6 +545,9 @@ async function init() {
     hudEl.style.animation = 'none';
     void hudEl.offsetHeight;
     hudEl.style.animation = '';
+    // Re-seed the volume so the slider reflects the persisted value
+    // even if the snapshot poller hasn't ticked since the last show.
+    seedVolumeFromSettings();
   });
   await listen('hud:hide-anim', () => {
     hudEl.classList.add('hiding');
@@ -537,6 +556,9 @@ async function init() {
   render();
   renderApps();
   setInterval(render, 1000);
+  // Seed once on first paint too so the very first show of the HUD
+  // isn't blank-then-flash either.
+  seedVolumeFromSettings();
 }
 init();
 

@@ -142,6 +142,35 @@ pub fn invoke_shell_verb(path: &str, verb: &str) -> Result<()> {
     Ok(())
 }
 
+/// Put a PNG-encoded image on the system clipboard. Decodes the PNG to
+/// raw RGBA, then hands it to arboard which writes it as CF_DIBV5 (the
+/// format Win11's clipboard service understands and that Paint, Word,
+/// Outlook, Slack, etc. all paste from). Uses arboard rather than the
+/// hand-rolled CF_DIBV5 dance because the bit-layout for DIBs with alpha
+/// is fiddly and arboard already gets it right.
+pub fn copy_image_to_clipboard(width: u32, height: u32, png: &[u8]) -> Result<()> {
+    let dyn_img = image::load_from_memory(png)
+        .map_err(|e| anyhow!("decode PNG: {e}"))?
+        .into_rgba8();
+    if dyn_img.width() != width || dyn_img.height() != height {
+        // Sanity check — if the encoded dimensions don't match what we
+        // recorded at capture time, prefer the decoded values so we
+        // don't hand a malformed buffer to arboard.
+    }
+    let actual_w = dyn_img.width() as usize;
+    let actual_h = dyn_img.height() as usize;
+    let raw = dyn_img.into_raw();
+    let mut cb = arboard::Clipboard::new()
+        .map_err(|e| anyhow!("arboard::new: {e}"))?;
+    cb.set_image(arboard::ImageData {
+        width: actual_w,
+        height: actual_h,
+        bytes: std::borrow::Cow::Owned(raw),
+    })
+    .map_err(|e| anyhow!("set_image: {e}"))?;
+    Ok(())
+}
+
 /// Put `text` on the system clipboard as Unicode. Uses the global-alloc +
 /// CF_UNICODETEXT dance because that's the only format every paste target
 /// (browsers, editors, terminal, Win+V history) reliably accepts.

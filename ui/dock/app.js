@@ -73,6 +73,13 @@ const iconCache = new Map();
 // exe → DOM node, so foreground updates flip a class without a full re-render
 // (which would kill hover states and replay animations on every focus change).
 const nodeByExe = new Map();
+// Recently-closed unpinned apps. Keyed lowercase exe path → { exe, label,
+// closedAt }. We keep them visible in the dock with a greyed style for
+// RECENTS_TTL_MS so the user can relaunch e.g. Terminal without going
+// through the launcher (it isn't pinned, so without this it'd vanish the
+// moment it closed).
+const recentsByExe = new Map();
+const RECENTS_TTL_MS = 5 * 60 * 1000;
 
 async function getIcon(exePath, hwnd) {
   if (iconCache.has(exePath)) return iconCache.get(exePath);
@@ -100,8 +107,45 @@ function isSystemExe(exe) {
   return SYSTEM_EXES.has(exeName(exe).toLowerCase());
 }
 
+// Maintain the recents map: exes that vanished from the running list since
+// the previous render get an entry, and exes that are running now get
+// pulled out. Called from renderCenter() before we compute the layout.
+function updateRecents(currentRunningExes, visibleRunning) {
+  const now = Date.now();
+  // Drop expired entries first so the dock doesn't grow unbounded.
+  for (const [key, val] of recentsByExe) {
+    if (now - val.closedAt > RECENTS_TTL_MS) recentsByExe.delete(key);
+  }
+  // Anything we knew was running last tick but isn't now → moved to recents.
+  // Skip pinned items (they're already present) and system exes.
+  const pinSetLc = new Set(pinned.map(p => p.path.toLowerCase()));
+  for (const exeLc of prevRunningExes) {
+    if (currentRunningExes.has(exeLc)) continue;
+    if (pinSetLc.has(exeLc)) continue;
+    if (recentsByExe.has(exeLc)) continue;
+    // Need the original-cased path for launch — pull it from the most
+    // recent visibleRunning entry that matches when present, otherwise
+    // from prevVisibleRunning (kept as a parallel cache below).
+    const cached = prevVisibleRunningByExe.get(exeLc);
+    if (!cached) continue;
+    recentsByExe.set(exeLc, {
+      exe: cached.exe_path,
+      label: exeName(cached.exe_path),
+      closedAt: now,
+    });
+  }
+  // Anything currently running drops out of recents.
+  for (const a of visibleRunning) {
+    recentsByExe.delete(a.exe_path.toLowerCase());
+  }
+}
+
+// Mirror of visibleRunning keyed by exe — lets updateRecents look up the
+// original-cased exe path for an exe key that's just disappeared.
+let prevVisibleRunningByExe = new Map();
+
 // ─────────────────────────────────────────────────────────────────────────
-// Center section: pinned + running app icons
+// Center section: pinned + running + recents app icons
 // ─────────────────────────────────────────────────────────────────────────
 async function renderCenter() {
   const pinSet = new Set(pinned.map(p => p.path.toLowerCase()));
@@ -119,8 +163,17 @@ async function renderCenter() {
       if (!prevRunningExes.has(exe)) newlyLaunched.add(exe);
     }
   }
+  updateRecents(currentRunningExes, visibleRunning);
+  prevVisibleRunningByExe = new Map(visibleRunning.map(a => [a.exe_path.toLowerCase(), a]));
   prevRunningExes = currentRunningExes;
   firstRender = false;
+
+  // Build a list of "recents to show" — exclude any that are now pinned or
+  // running so the same exe never appears twice on the dock.
+  const recents = [...recentsByExe.values()].filter(r => {
+    const lc = r.exe.toLowerCase();
+    return !pinSet.has(lc) && !currentRunningExes.has(lc);
+  });
 
   center.innerHTML = '';
   nodeByExe.clear();
@@ -153,14 +206,35 @@ async function renderCenter() {
     nodeByExe.set(a.exe_path.toLowerCase(), node);
     center.appendChild(node);
   }
+  if (recents.length && (pinned.length || pinnedExtras.length)) {
+    const div = document.createElement('div');
+    div.className = 'dock-divider';
+    center.appendChild(div);
+  }
+  for (const r of recents) {
+    const node = await iconNode({
+      exe: r.exe,
+      label: r.label,
+      running: null,
+      animateLaunch: false,
+      isPinned: false,
+      recent: true,
+    });
+    nodeByExe.set(r.exe.toLowerCase(), node);
+    center.appendChild(node);
+  }
 
   applyForegroundHighlight();
 }
 
-async function iconNode({ exe, label, running, animateLaunch, isPinned }) {
+async function iconNode({ exe, label, running, animateLaunch, isPinned, recent }) {
   const node = document.createElement('div');
   node.className = 'dock-icon';
   if (animateLaunch) node.classList.add('just-launched');
+  // Recents render dimmed so they read as "available to relaunch" instead
+  // of "currently open". Click handler dispatches to launch instead of
+  // focus when there's no running record.
+  if (recent) node.classList.add('recent');
 
   const hwnd = running?.windows?.[0]?.hwnd ?? null;
   const url = await getIcon(exe, hwnd);
@@ -176,7 +250,11 @@ async function iconNode({ exe, label, running, animateLaunch, isPinned }) {
 
   const tip = document.createElement('div');
   tip.className = 'tooltip';
-  tip.textContent = running ? `${label} (${running.windows.length})` : label;
+  if (recent) {
+    tip.textContent = `${label} · click to relaunch`;
+  } else {
+    tip.textContent = running ? `${label} (${running.windows.length})` : label;
+  }
   node.appendChild(tip);
 
   if (running && running.windows.length > 0) {
@@ -203,6 +281,11 @@ async function iconNode({ exe, label, running, animateLaunch, isPinned }) {
     e.preventDefault();
     onRightClick(exe, label, running, e);
   });
+  // Multi-window hover preview — show a popup listing every open window
+  // for the app when the cursor lingers on its dock icon. Skipped for
+  // single-window apps (the regular tooltip is enough) and recents
+  // (no windows to show).
+  attachWindowPreview(node, label, running);
   // Pinned icons are reorderable via HTML5 drag — running-only "extras" are
   // not, since their order is implicit (process appearance order). We drop
   // the OLE drag-out path here: starting an OS drag races the reorder
@@ -615,6 +698,142 @@ async function onClick(exe, _label, running) {
   } else {
     await invoke('focus_window', { hwnd: targetHwnd });
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Window-list preview. Hover an icon for ≥ HOVER_DELAY_MS and a card
+// floats above it listing every open window for that app: title + glyph,
+// click to focus, × to close. Stays open while the cursor is inside the
+// card so the user can move into it. No DWM thumbnails — that needs
+// per-window DwmRegisterThumbnail wiring; titles + a per-row close are
+// the high-value 80% case for "I have 7 Chrome windows, which is which".
+// ─────────────────────────────────────────────────────────────────────────
+const HOVER_DELAY_MS = 350;
+const HIDE_DELAY_MS = 180;
+let activePreview = null; // { node, popup, hideTimer, showTimer }
+
+function dismissPreview() {
+  if (!activePreview) return;
+  if (activePreview.popup && activePreview.popup.parentNode) {
+    activePreview.popup.parentNode.removeChild(activePreview.popup);
+  }
+  if (activePreview.showTimer) clearTimeout(activePreview.showTimer);
+  if (activePreview.hideTimer) clearTimeout(activePreview.hideTimer);
+  activePreview = null;
+}
+
+function attachWindowPreview(node, label, running) {
+  if (!running || running.windows.length < 2) return;
+
+  node.addEventListener('mouseenter', () => {
+    // Close any other preview before opening this one.
+    if (activePreview && activePreview.node !== node) dismissPreview();
+    if (activePreview && activePreview.node === node) {
+      // Cursor returned before hide-delay elapsed — cancel the hide.
+      if (activePreview.hideTimer) {
+        clearTimeout(activePreview.hideTimer);
+        activePreview.hideTimer = null;
+      }
+      return;
+    }
+    const showTimer = setTimeout(() => showPreview(node, label, running), HOVER_DELAY_MS);
+    activePreview = { node, popup: null, hideTimer: null, showTimer };
+  });
+
+  node.addEventListener('mouseleave', () => {
+    if (!activePreview || activePreview.node !== node) return;
+    // Defer the hide so the user can move into the popup without it
+    // vanishing under their cursor in the gap.
+    activePreview.hideTimer = setTimeout(dismissPreview, HIDE_DELAY_MS);
+  });
+}
+
+function showPreview(anchorNode, label, running) {
+  if (!activePreview || activePreview.node !== anchorNode) return;
+
+  const popup = document.createElement('div');
+  popup.className = 'window-preview glass-card';
+  popup.setAttribute('role', 'menu');
+
+  const head = document.createElement('div');
+  head.className = 'window-preview-head';
+  head.textContent = `${label} · ${running.windows.length} window${running.windows.length === 1 ? '' : 's'}`;
+  popup.appendChild(head);
+
+  const list = document.createElement('div');
+  list.className = 'window-preview-list';
+  for (const w of running.windows) {
+    const row = document.createElement('div');
+    row.className = 'window-preview-row';
+    if (w.hwnd === foregroundHwnd) row.classList.add('foreground');
+
+    const glyph = document.createElement('span');
+    glyph.className = 'window-preview-glyph';
+    glyph.textContent = '▢';
+
+    const title = document.createElement('span');
+    title.className = 'window-preview-title';
+    title.textContent = w.title || '(untitled)';
+    title.title = w.title || '';
+
+    const close = document.createElement('button');
+    close.className = 'window-preview-close';
+    close.textContent = '×';
+    close.title = 'Close window';
+    close.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      invoke('close_hwnds', { hwnds: [w.hwnd] }).catch(() => {});
+      row.remove();
+      // If we just closed the last window, dismiss the popup.
+      if (list.children.length === 0) dismissPreview();
+    });
+
+    row.appendChild(glyph);
+    row.appendChild(title);
+    row.appendChild(close);
+    row.addEventListener('click', () => {
+      invoke('focus_window', { hwnd: w.hwnd }).catch(() => {});
+      dismissPreview();
+    });
+    list.appendChild(row);
+  }
+  popup.appendChild(list);
+
+  // Position: anchor above the icon, centered horizontally, clamped to the
+  // viewport. Measure after append so getBoundingClientRect reflects real
+  // size — the popup uses `visibility: hidden` initially so the position
+  // shift isn't visible.
+  popup.style.visibility = 'hidden';
+  document.body.appendChild(popup);
+  const iconRect = anchorNode.getBoundingClientRect();
+  const popupRect = popup.getBoundingClientRect();
+  let left = iconRect.left + iconRect.width / 2 - popupRect.width / 2;
+  const margin = 8;
+  if (left < margin) left = margin;
+  if (left + popupRect.width > window.innerWidth - margin) {
+    left = window.innerWidth - margin - popupRect.width;
+  }
+  // Stack above the icon with a small gap; the dock sits at the bottom of
+  // the screen, so "above" is always free space.
+  let top = iconRect.top - popupRect.height - 10;
+  if (top < margin) top = iconRect.bottom + 10; // fall back to below if no room above
+  popup.style.left = `${Math.round(left)}px`;
+  popup.style.top = `${Math.round(top)}px`;
+  popup.style.visibility = '';
+
+  // Keep the preview alive while the cursor is inside it.
+  popup.addEventListener('mouseenter', () => {
+    if (activePreview && activePreview.hideTimer) {
+      clearTimeout(activePreview.hideTimer);
+      activePreview.hideTimer = null;
+    }
+  });
+  popup.addEventListener('mouseleave', () => {
+    if (!activePreview) return;
+    activePreview.hideTimer = setTimeout(dismissPreview, HIDE_DELAY_MS);
+  });
+
+  activePreview.popup = popup;
 }
 
 async function onRightClick(exe, label, running, event) {
