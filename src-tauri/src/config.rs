@@ -47,6 +47,13 @@ pub struct Settings {
     pub weather_lat: Option<f64>,
     #[serde(default)]
     pub weather_lon: Option<f64>,
+    /// Most recent volume the user explicitly set via the HUD slider —
+    /// persisted so that reopening the HUD seeds the slider with the
+    /// last-known value instead of flashing 50% (the HTML default) until
+    /// the next snapshot tick lands. Distinct from the OS endpoint volume
+    /// only briefly during the user-intent window.
+    #[serde(default)]
+    pub volume_percent: Option<u8>,
 }
 
 impl Default for Settings {
@@ -57,6 +64,7 @@ impl Default for Settings {
             weather_city: None,
             weather_lat: None,
             weather_lon: None,
+            volume_percent: None,
         }
     }
 }

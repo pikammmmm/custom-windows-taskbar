@@ -21,6 +21,7 @@ mod keyhook;
 mod app_actions;
 mod stash;
 mod wndproc;
+mod logger;
 
 /// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
 /// into our pinned.json. Critical: only items the user has pinned to the
@@ -127,6 +128,11 @@ fn main() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    // File logger lives at %APPDATA%\glassbar\debug.log. The init banner
+    // gives every session a clear "==== start ====" line so a user-shared
+    // log isn't ambiguous about which run produced what.
+    logger::init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_drag::init())
         .invoke_handler(tauri::generate_handler![
@@ -157,6 +163,7 @@ fn main() {
             commands::set_autostart,
             commands::get_autostart,
             commands::set_volume,
+            commands::get_settings_volume,
             commands::set_mute,
             commands::list_audio_devices,
             commands::set_default_audio_device,

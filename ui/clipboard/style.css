@@ -126,6 +126,42 @@
   text-transform: uppercase;
 }
 
+/* Image rows — preview thumbnail above the meta line. The wrapper has a
+   subtle checkered backdrop so transparent screenshots are still visible
+   and the thumbnail is centered/clipped to a fixed max height so a tall
+   screenshot doesn't blow out the row. */
+.clip-row.image {
+  padding: 8px;
+  gap: 6px;
+}
+.clip-row-image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%) 0 0 / 14px 14px,
+    linear-gradient(-45deg, rgba(255,255,255,0.04) 25%, transparent 25%) 0 0 / 14px 14px,
+    linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.04) 75%) 7px 7px / 14px 14px,
+    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.04) 75%) 7px 7px / 14px 14px,
+    rgba(0,0,0,0.25);
+  border-radius: 8px;
+  padding: 6px;
+  max-height: 160px;
+  overflow: hidden;
+}
+.clip-row-image {
+  display: block;
+  max-width: 100%;
+  max-height: 148px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.clip-row-image-placeholder {
+  font-size: 36px;
+  color: var(--glass-fg-dim);
+  padding: 28px 0;
+}
+
 .clip-empty {
   padding: 28px 12px;
   text-align: center;

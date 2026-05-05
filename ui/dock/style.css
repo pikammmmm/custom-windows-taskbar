@@ -106,6 +106,119 @@ body.drop-active .glass-card {
   animation: dock-fadein 260ms ease-out;
 }
 
+/* Recents — apps that recently closed but aren't pinned. Shown dimmed
+   so they read as "available to relaunch" rather than "currently open". */
+.dock-icon.recent img,
+.dock-icon.recent .icon-fallback {
+  opacity: 0.55;
+  filter: grayscale(35%);
+}
+.dock-icon.recent {
+  background: rgba(255, 255, 255, 0.025);
+}
+.dock-icon.recent:hover img,
+.dock-icon.recent:hover .icon-fallback {
+  opacity: 1;
+  filter: none;
+}
+
+/* Window-list preview popup — glassy card floating above the dock icon.
+   Position is set inline by JS (left/top in viewport coords); we just
+   provide the visual surface and row layout. */
+.window-preview {
+  position: fixed;
+  z-index: 9999;
+  min-width: 240px;
+  max-width: 360px;
+  padding: 8px;
+  border-radius: 12px;
+  /* Match the dock card's glass aesthetic exactly so the preview reads
+     as "another panel of the same app", not a generic OS popup. */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: auto;
+  animation: window-preview-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes window-preview-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.window-preview-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--glass-fg-dim, rgba(220, 230, 245, 0.55));
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.window-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.window-preview-list::-webkit-scrollbar { width: 6px; }
+.window-preview-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.window-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.window-preview-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.window-preview-row.foreground {
+  background: rgba(92, 182, 255, 0.16);
+  box-shadow: 0 0 0 1px rgba(92, 182, 255, 0.30) inset;
+}
+.window-preview-glyph {
+  font-size: 13px;
+  color: rgba(140, 200, 255, 0.85);
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.window-preview-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--glass-fg, rgba(220, 230, 245, 0.92));
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.window-preview-close {
+  background: transparent;
+  border: none;
+  color: rgba(220, 230, 245, 0.45);
+  font-size: 16px;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.window-preview-close:hover {
+  background: rgba(255, 80, 80, 0.20);
+  color: #ffb4b4;
+}
+
 /* Reorder drag — fade the source, draw a vertical insertion bar on whichever
    side of the target the cursor is on. Anchored to the icon's position:relative. */
 .dock-icon.dragging {
