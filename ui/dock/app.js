@@ -691,13 +691,27 @@ async function onClick(exe, _label, running) {
     await invoke('launch', { path: exe });
     return;
   }
-  const targetHwnd = running.windows[0].hwnd;
   const fg = await invoke('foreground_hwnd');
-  if (fg === targetHwnd) {
-    await invoke('minimize_window', { hwnd: targetHwnd });
-  } else {
-    await invoke('focus_window', { hwnd: targetHwnd });
+  // Single-window apps: classic focus / minimize toggle.
+  if (running.windows.length === 1) {
+    const target = running.windows[0].hwnd;
+    if (fg === target) {
+      await invoke('minimize_window', { hwnd: target });
+    } else {
+      await invoke('focus_window', { hwnd: target });
+    }
+    return;
   }
+  // Multi-window apps: cycle. If one of this app's windows is currently
+  // foreground, jump to the NEXT one (round-robin). Otherwise focus the
+  // first. Matches the Windows-11 taskbar's "click again to cycle" UX —
+  // users with 5 Chrome windows can step through them with repeated
+  // dock-icon clicks instead of having to hover the preview every time.
+  const idxOfFg = running.windows.findIndex(w => w.hwnd === fg);
+  const targetIdx = idxOfFg >= 0
+    ? (idxOfFg + 1) % running.windows.length
+    : 0;
+  await invoke('focus_window', { hwnd: running.windows[targetIdx].hwnd });
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -708,7 +722,11 @@ async function onClick(exe, _label, running) {
 // per-window DwmRegisterThumbnail wiring; titles + a per-row close are
 // the high-value 80% case for "I have 7 Chrome windows, which is which".
 // ─────────────────────────────────────────────────────────────────────────
-const HOVER_DELAY_MS = 350;
+// 220ms is the sweet spot — slow enough that brushing past an icon
+// while reordering doesn't pop a popup, fast enough that intentional
+// hover feels instant. 350ms (the original) was too slow for users
+// who didn't realise the feature existed.
+const HOVER_DELAY_MS = 220;
 const HIDE_DELAY_MS = 180;
 let activePreview = null; // { node, popup, hideTimer, showTimer }
 

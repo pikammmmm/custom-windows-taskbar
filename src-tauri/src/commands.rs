@@ -523,6 +523,16 @@ pub fn get_settings_volume() -> Option<u8> {
     config::load_settings().ok().and_then(|s| s.volume_percent)
 }
 
+/// Dump every audio endpoint's reported scalar to debug.log. Called from
+/// the HUD when the user clicks a "diagnose volume" button — for now also
+/// invokable directly so we have a way to triage the recurring "HUD shows
+/// wrong %" reports without a fresh build.
+#[tauri::command]
+pub fn audio_diagnostics() -> audio::AudioState {
+    audio::log_endpoint_diagnostics();
+    audio::current()
+}
+
 #[tauri::command]
 pub fn set_mute(app: AppHandle, muted: bool) -> Result<(), String> {
     audio::set_mute(muted)?;
@@ -999,7 +1009,15 @@ pub fn show_clipboard(app: AppHandle) -> Result<(), String> {
         crate::dwm::strip_decorations(h);
         crate::dwm::suppress_nc_rendering(h);
     }
-    let _ = app.emit_to("clipboard", "clipboard:show", ());
+    // Broadcast — emit_to("clipboard", ...) was being silently dropped on
+    // Tauri 2, so the panel JS never refreshed on subsequent shows. The
+    // first refresh fires from the JS module load (when history was empty),
+    // and without a working show event the panel stayed stuck on the
+    // empty-state forever — that was the v0.1.7..0.1.12 "clipboard isn't
+    // working" symptom. Other windows ignore this event because they
+    // don't listen for it; safe to broadcast.
+    let _ = app.emit("clipboard:show", ());
+    crate::glog!("show_clipboard: clipboard:show event emitted");
     Ok(())
 }
 
