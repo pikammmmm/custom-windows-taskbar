@@ -170,12 +170,25 @@ document.addEventListener('keydown', (e) => {
 
 const win = getCurrentWindow();
 win.onFocusChanged(({ payload: focused }) => {
-  // Auto-dismiss on click-away — same UX as the right-click menu and
-  // spotlight. Without this the panel sticks around blocking clicks.
-  if (!focused) invoke('hide_clipboard').catch(() => {});
+  if (focused) {
+    // Refresh on every gain-of-focus — Tauri 2's emit_to/listen pairing
+    // was unreliably dropping our 'clipboard:show' event, leaving the
+    // panel stuck on whatever state the previous render produced.
+    // Focus-gain is a backstop the OS guarantees fires whenever the
+    // window becomes interactive, so it works even when the named event
+    // doesn't.
+    filterInput.value = '';
+    activeIdx = 0;
+    refresh().then(() => filterInput.focus());
+  } else {
+    // Auto-dismiss on click-away — same UX as the right-click menu and
+    // spotlight. Without this the panel sticks around blocking clicks.
+    invoke('hide_clipboard').catch(() => {});
+  }
 });
 
-// Refresh on every show so the user always sees up-to-the-second history.
+// Keep the named event listener too — when it does arrive it's the
+// fastest signal (no need to wait for the focus event).
 listen('clipboard:show', () => {
   filterInput.value = '';
   activeIdx = 0;

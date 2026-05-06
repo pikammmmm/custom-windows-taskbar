@@ -30,21 +30,33 @@ fn ensure_com() {
     });
 }
 
-unsafe fn endpoint() -> Option<IAudioEndpointVolume> {
+unsafe fn endpoint_for_role(role: ERole) -> Option<IAudioEndpointVolume> {
     let enumerator: IMMDeviceEnumerator =
         CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
-    // eMultimedia — most-common system default. eConsole was tried but on
-    // some systems (notably USB DACs) reports a different endpoint than
-    // the Windows tray slider controls, which made the displayed % look
-    // unrelated to the volume the user was actually adjusting.
-    let device = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia).ok()?;
+    let device = enumerator.GetDefaultAudioEndpoint(eRender, role).ok()?;
     device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None).ok()
+}
+
+unsafe fn endpoint() -> Option<IAudioEndpointVolume> {
+    // eConsole is the role the Windows tray slider controls — that's the
+    // canonical "system volume" the user sees and expects to match. Earlier
+    // builds used eMultimedia, but on systems where the user has set
+    // different defaults per role (USB headset configured differently from
+    // speakers, gaming headsets that split chat/game audio, etc.) that
+    // didn't match the tray and the HUD looked wrong. Fall back to
+    // eMultimedia → eCommunications if eConsole isn't usable.
+    if let Some(ep) = endpoint_for_role(eConsole) { return Some(ep); }
+    if let Some(ep) = endpoint_for_role(eMultimedia) { return Some(ep); }
+    endpoint_for_role(eCommunications)
 }
 
 pub fn current() -> AudioState {
     ensure_com();
     unsafe {
-        let Some(ep) = endpoint() else { return AudioState::default() };
+        let Some(ep) = endpoint() else {
+            crate::glog!("audio::current: no endpoint");
+            return AudioState::default();
+        };
         let muted = ep.GetMute().map(|b| b.as_bool()).unwrap_or(false);
         // Use scalar * 100 — same value we WRITE in set_volume, so the
         // round-trip is consistent. GetVolumeStepInfo was tried but caused
@@ -58,6 +70,32 @@ pub fn current() -> AudioState {
             volume_percent: percent,
             muted,
             has_device: true,
+        }
+    }
+}
+
+/// Log the volume-scalar value reported by every endpoint role. Diagnostic
+/// only — invoked by the get_audio_diagnostics command so the user can
+/// share a snapshot when the HUD's percentage looks wrong, and we can tell
+/// at a glance whether the discrepancy is on our side or whether the user
+/// has actually configured per-role differences in Sound Settings.
+pub fn log_endpoint_diagnostics() {
+    ensure_com();
+    unsafe {
+        for (label, role) in [
+            ("eConsole", eConsole),
+            ("eMultimedia", eMultimedia),
+            ("eCommunications", eCommunications),
+        ] {
+            match endpoint_for_role(role) {
+                Some(ep) => {
+                    let v = ep.GetMasterVolumeLevelScalar().unwrap_or(-1.0);
+                    let m = ep.GetMute().map(|b| b.as_bool()).unwrap_or(false);
+                    let pct = if v < 0.0 { -1 } else { (v.clamp(0.0, 1.0) * 100.0).round() as i32 };
+                    crate::glog!("audio[{label}]: scalar={:.4} percent={pct} muted={m}", v);
+                }
+                None => crate::glog!("audio[{label}]: no endpoint"),
+            }
         }
     }
 }

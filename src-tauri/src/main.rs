@@ -164,6 +164,7 @@ fn main() {
             commands::get_autostart,
             commands::set_volume,
             commands::get_settings_volume,
+            commands::audio_diagnostics,
             commands::set_mute,
             commands::list_audio_devices,
             commands::set_default_audio_device,
