@@ -107,6 +107,64 @@ function isSystemExe(exe) {
   return SYSTEM_EXES.has(exeName(exe).toLowerCase());
 }
 
+// True when `runningExe` and `pinnedExe` should be considered the same
+// app even though their paths differ. Catches three cases that
+// previously caused the same app to appear twice on the dock — once as
+// a no-indicator pinned icon, once as a "running" extra:
+//
+//   1. Squirrel apps (Discord, Slack, GitHub Desktop, WhatsApp, older
+//      Atom/Teams) — pinned to Update.exe, run as
+//      `app-VERSION\App.exe`. After auto-update the version segment
+//      changes and even an exact-path-stored pin breaks.
+//   2. Same exe via 8.3 short path vs long path
+//      (`C:\PROGRA~1\App` vs `C:\Program Files\App`).
+//   3. Auto-updater that drops the exe at a sibling path on each
+//      release.
+//
+// The fallbacks lean on filename + parent-directory similarity. False
+// positives (two genuinely different apps merged) are rare because two
+// different apps almost never share both filename AND grandparent dir.
+function pathsMatchSameApp(runningExe, pinnedExe) {
+  if (!runningExe || !pinnedExe) return false;
+  const r = runningExe.toLowerCase().replace(/\//g, '\\');
+  const p = pinnedExe.toLowerCase().replace(/\//g, '\\');
+  if (r === p) return true;
+
+  const rBase = r.split('\\').pop();
+  const pBase = p.split('\\').pop();
+
+  // Squirrel: pinned is `<root>\Update.exe`, running is
+  // `<root>\app-<ver>\App.exe`. The shared prefix is the install root.
+  // Detect either direction (some users reverse-pin too).
+  if (pBase === 'update.exe') {
+    const root = p.slice(0, p.lastIndexOf('\\'));
+    if (r.startsWith(root + '\\app-')) return true;
+  }
+  if (rBase === 'update.exe') {
+    const root = r.slice(0, r.lastIndexOf('\\'));
+    if (p.startsWith(root + '\\app-')) return true;
+  }
+
+  // Same filename AND share the grandparent dir — covers the
+  // version-bump case where only the `app-X.Y.Z` segment changed.
+  if (rBase === pBase && rBase !== 'update.exe') {
+    const stripVersionedAppDir = (s) =>
+      s.replace(/\\app-[\d.]+\\[^\\]+$/, '\\__APP__');
+    if (stripVersionedAppDir(r) === stripVersionedAppDir(p)) return true;
+  }
+
+  return false;
+}
+
+// Strip the `app-X.Y.Z` segment so the icon → DOM cache survives version
+// bumps (otherwise renderCenter() would build a fresh node tree on every
+// auto-update tick).
+function appKey(exePath) {
+  return exePath.toLowerCase()
+    .replace(/\//g, '\\')
+    .replace(/\\app-[\d.]+\\/, '\\__APP__\\');
+}
+
 // Maintain the recents map: exes that vanished from the running list since
 // the previous render get an entry, and exes that are running now get
 // pulled out. Called from renderCenter() before we compute the layout.
@@ -148,10 +206,21 @@ let prevVisibleRunningByExe = new Map();
 // Center section: pinned + running + recents app icons
 // ─────────────────────────────────────────────────────────────────────────
 async function renderCenter() {
-  const pinSet = new Set(pinned.map(p => p.path.toLowerCase()));
   const visibleRunning = running.filter(a => !isSystemExe(a.exe_path));
-  const runByExe = new Map(visibleRunning.map(a => [a.exe_path.toLowerCase(), a]));
-  const pinnedExtras = visibleRunning.filter(a => !pinSet.has(a.exe_path.toLowerCase()));
+  // Use smart path matching so Squirrel apps (Discord, Slack) — which
+  // pin to Update.exe but run from `app-VERSION\App.exe` — don't double
+  // up as both a pinned icon and a separate "running extra" icon.
+  const matchingRunningFor = (pinnedExe) =>
+    visibleRunning.find(a => pathsMatchSameApp(a.exe_path, pinnedExe));
+  const claimedRunning = new Set();
+  for (const p of pinned) {
+    const m = matchingRunningFor(p.path);
+    if (m) claimedRunning.add(m.exe_path.toLowerCase());
+  }
+  const pinnedExtras = visibleRunning.filter(
+    a => !claimedRunning.has(a.exe_path.toLowerCase())
+  );
+  const pinSet = new Set(pinned.map(p => p.path.toLowerCase()));
 
   // Bounce any exe that has a running window now but didn't last render.
   // We compare against the running set (not the union with pinned) so that
@@ -180,11 +249,16 @@ async function renderCenter() {
 
   for (const p of pinned) {
     const exe = p.path;
+    const matched = matchingRunningFor(exe);
     const node = await iconNode({
       exe,
       label: p.display_name,
-      running: runByExe.get(exe.toLowerCase()),
-      animateLaunch: newlyLaunched.has(exe.toLowerCase()),
+      running: matched,
+      // Animate-launch when the matched running entry just appeared, OR
+      // the pinned exe is freshly running (covers exact-path matches too).
+      animateLaunch: matched
+        ? newlyLaunched.has(matched.exe_path.toLowerCase())
+        : newlyLaunched.has(exe.toLowerCase()),
       isPinned: true,
     });
     nodeByExe.set(exe.toLowerCase(), node);
@@ -645,12 +719,15 @@ tray.mediaNext.addEventListener('click', (ev) => {
   invoke('media_next').catch(() => {});
 });
 tray.vol.addEventListener('click', async (e) => {
-  const items = [{ kind: 'header', name: 'Output device' }];
+  const items = [];
+
+  // Output (speakers/headphones) — same role the volume slider controls.
+  items.push({ kind: 'header', name: 'Output device' });
+  items.push({ kind: 'separator' });
   try {
-    const devices = await invoke('list_audio_devices');
-    if (Array.isArray(devices) && devices.length > 0) {
-      items.push({ kind: 'separator' });
-      for (const d of devices) {
+    const out = await invoke('list_audio_devices_for', { flow: 'output' });
+    if (Array.isArray(out) && out.length > 0) {
+      for (const d of out) {
         items.push({
           kind: 'item',
           glyph: d.is_default ? '●' : '○',
@@ -663,8 +740,34 @@ tray.vol.addEventListener('click', async (e) => {
       items.push({ kind: 'item', glyph: '·', label: 'No output devices', action: '', args: {} });
     }
   } catch {
-    items.push({ kind: 'item', glyph: '!', label: 'Failed to list devices', action: '', args: {} });
+    items.push({ kind: 'item', glyph: '!', label: 'Failed to list outputs', action: '', args: {} });
   }
+
+  // Input (microphones / line-in). Same set_default_audio_device handler —
+  // the IPolicyConfig API picks the device's flow from its ID, so one
+  // command does both directions.
+  items.push({ kind: 'separator' });
+  items.push({ kind: 'header', name: 'Input device' });
+  items.push({ kind: 'separator' });
+  try {
+    const ins = await invoke('list_audio_devices_for', { flow: 'input' });
+    if (Array.isArray(ins) && ins.length > 0) {
+      for (const d of ins) {
+        items.push({
+          kind: 'item',
+          glyph: d.is_default ? '●' : '○',
+          label: d.name,
+          action: 'set_default_audio_device',
+          args: { id: d.id },
+        });
+      }
+    } else {
+      items.push({ kind: 'item', glyph: '·', label: 'No input devices', action: '', args: {} });
+    }
+  } catch {
+    items.push({ kind: 'item', glyph: '!', label: 'Failed to list inputs', action: '', args: {} });
+  }
+
   items.push({ kind: 'separator' });
   items.push({
     kind: 'item', glyph: '⚙', label: 'Sound settings',
@@ -676,7 +779,7 @@ tray.vol.addEventListener('click', async (e) => {
       items,
       x: Math.round(e.screenX * dpr),
       y: Math.round(e.screenY * dpr),
-      width: 240,
+      width: 260,
       height: estimateMenuHeight(items),
     },
   }).catch(() => {});

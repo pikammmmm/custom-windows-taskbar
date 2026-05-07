@@ -10,11 +10,22 @@ let entries = [];
 let filtered = [];
 let activeIdx = 0;
 
+// Tiny log helper — every panel-side event lands in debug.log via the
+// dbg_log Tauri command. This was the missing piece for diagnosing the
+// long-running 'panel opens but is empty' bug: previously we only saw
+// Rust-side events, so we couldn't distinguish 'JS listener never fired'
+// from 'JS fired but invoke errored'.
+function logj(msg) {
+  invoke('dbg_log', { message: `clipboard ${msg}` }).catch(() => {});
+}
+
 async function refresh() {
   try {
     entries = await invoke('clipboard_history');
-  } catch {
+    logj(`refresh ok, got ${entries.length} entries`);
+  } catch (e) {
     entries = [];
+    logj(`refresh FAILED: ${e}`);
   }
   applyFilter();
 }
@@ -169,7 +180,9 @@ document.addEventListener('keydown', (e) => {
 });
 
 const win = getCurrentWindow();
+logj('panel JS module loaded, attaching listeners');
 win.onFocusChanged(({ payload: focused }) => {
+  logj(`focus changed: focused=${focused}`);
   if (focused) {
     // Refresh on every gain-of-focus — Tauri 2's emit_to/listen pairing
     // was unreliably dropping our 'clipboard:show' event, leaving the
@@ -190,6 +203,7 @@ win.onFocusChanged(({ payload: focused }) => {
 // Keep the named event listener too — when it does arrive it's the
 // fastest signal (no need to wait for the focus event).
 listen('clipboard:show', () => {
+  logj('clipboard:show event received');
   filterInput.value = '';
   activeIdx = 0;
   refresh().then(() => filterInput.focus());
