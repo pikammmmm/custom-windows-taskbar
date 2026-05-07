@@ -470,9 +470,20 @@ document.querySelectorAll('[data-power-action]').forEach((btn) => {
 // WARP button: left-click toggles connection, right-click opens the app.
 // Toggle is driven by the most recent snapshot rather than a re-poll so
 // the user gets instant feedback even if warp-cli takes a moment.
-el.warpBtn.addEventListener('click', () => {
+el.warpBtn.addEventListener('click', async () => {
   const connected = lastSnapshot?.warp?.connected ?? false;
-  invoke('warp_toggle', { connect: !connected }).catch(() => {});
+  try {
+    await invoke('warp_toggle', { connect: !connected });
+    showToast(connected ? 'Disconnecting WARP…' : 'Connecting WARP…');
+  } catch (err) {
+    // Surface the failure — silently swallowing was the v0.1.13 'WARP
+    // button does nothing' symptom. The Rust toggle now also falls back
+    // to opening the WARP GUI when the CLI is missing, but that path
+    // still returns an Err so we land here either way.
+    const msg = String(err || 'WARP toggle failed');
+    showToast(msg, 'bad');
+    invoke('dbg_log', { message: `warp click error: ${msg}` }).catch(() => {});
+  }
 });
 el.warpBtn.addEventListener('contextmenu', (e) => {
   e.preventDefault();

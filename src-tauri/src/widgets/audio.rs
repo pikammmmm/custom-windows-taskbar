@@ -1,8 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use windows::core::{Interface, GUID, HRESULT, PCWSTR, PROPVARIANT};
 use windows::Win32::Media::Audio::{
-    eConsole, eCommunications, eMultimedia, eRender, ERole,
+    eCapture, eConsole, eCommunications, eMultimedia, eRender, EDataFlow, ERole,
     Endpoints::IAudioEndpointVolume, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::{
@@ -138,18 +138,46 @@ const PKEY_DEVICE_FRIENDLY_NAME: PROPERTYKEY = PROPERTYKEY {
     pid: 14,
 };
 
+/// Audio data-flow direction. Output (`eRender`) is speakers / headphones /
+/// HDMI; input (`eCapture`) is microphones / line-in. Identifies which
+/// list of devices the volume menu is about to populate.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Flow {
+    Output,
+    Input,
+}
+
+impl Flow {
+    fn data_flow(self) -> EDataFlow {
+        match self {
+            Flow::Output => eRender,
+            Flow::Input => eCapture,
+        }
+    }
+}
+
 pub fn list_devices() -> Result<Vec<AudioDevice>, String> {
+    list_devices_for(Flow::Output)
+}
+
+pub fn list_devices_for(flow: Flow) -> Result<Vec<AudioDevice>, String> {
     ensure_com();
     unsafe {
         let enumerator: IMMDeviceEnumerator =
             CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|e| e.to_string())?;
+        let data_flow = flow.data_flow();
         let coll = enumerator
-            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .EnumAudioEndpoints(data_flow, DEVICE_STATE_ACTIVE)
             .map_err(|e| e.to_string())?;
         let count = coll.GetCount().map_err(|e| e.to_string())?;
 
+        // Use eConsole for the default-flag — that's the role the system
+        // tray sliders and Sound settings UI use as the canonical default,
+        // so the bullet point in our menu lines up with what the user
+        // expects to be the active device.
         let default_id = enumerator
-            .GetDefaultAudioEndpoint(eRender, eMultimedia)
+            .GetDefaultAudioEndpoint(data_flow, eConsole)
             .ok()
             .and_then(|d| d.GetId().ok())
             .map(|p| p.to_string().unwrap_or_default())

@@ -83,30 +83,81 @@ fn read_once() -> u8 {
 }
 
 fn warp_cli_path() -> Option<std::path::PathBuf> {
-    // The standard installer lays the CLI down here on x64 Windows. Earlier
-    // versions sat under "Program Files (x86)" which we also check as a
-    // courtesy.
-    let candidates = [
-        r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe",
-        r"C:\Program Files (x86)\Cloudflare\Cloudflare WARP\warp-cli.exe",
+    // Cloudflare ships the CLI under several layouts depending on
+    // installer vintage and MSI vs Store-app provenance. Previously we
+    // only checked the two stable Program Files paths and quietly bailed
+    // on every other layout — manifesting to users as "the WARP button
+    // does nothing." Now we walk a wider list and also honour the
+    // PROGRAMFILES env var so non-default install drives work too.
+    let mut candidates: Vec<std::path::PathBuf> = vec![
+        r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe".into(),
+        r"C:\Program Files (x86)\Cloudflare\Cloudflare WARP\warp-cli.exe".into(),
+        r"C:\Program Files\Cloudflare Inc\Cloudflare WARP\warp-cli.exe".into(),
     ];
-    candidates.iter()
-        .map(std::path::PathBuf::from)
-        .find(|p| p.is_file())
+    if let Ok(pf) = std::env::var("PROGRAMFILES") {
+        candidates.push(format!(r"{pf}\Cloudflare\Cloudflare WARP\warp-cli.exe").into());
+        candidates.push(format!(r"{pf}\Cloudflare Inc\Cloudflare WARP\warp-cli.exe").into());
+    }
+    if let Ok(pf) = std::env::var("PROGRAMFILES(X86)") {
+        candidates.push(format!(r"{pf}\Cloudflare\Cloudflare WARP\warp-cli.exe").into());
+    }
+    let found = candidates.iter().find(|p| p.is_file()).cloned();
+    if found.is_none() {
+        crate::glog!("warp: warp-cli.exe not found in any candidate path");
+    }
+    found
 }
 
-/// Issue a connect / disconnect through the CLI. Best-effort: if the CLI
-/// isn't installed we fail loudly so the frontend can surface it.
+/// Resolve the path to the GUI Cloudflare WARP app. Used as a fallback
+/// when the CLI is missing — clicking the HUD button still opens the app
+/// so the user can act, instead of failing silently.
+fn warp_app_path() -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = vec![
+        r"C:\Program Files\Cloudflare\Cloudflare WARP\Cloudflare WARP.exe".into(),
+        r"C:\Program Files (x86)\Cloudflare\Cloudflare WARP\Cloudflare WARP.exe".into(),
+    ];
+    if let Ok(pf) = std::env::var("PROGRAMFILES") {
+        candidates.push(format!(r"{pf}\Cloudflare\Cloudflare WARP\Cloudflare WARP.exe").into());
+    }
+    candidates.iter().find(|p| p.is_file()).cloned()
+}
+
+/// Issue a connect / disconnect through the CLI. If the CLI isn't
+/// installed but the GUI app is, fall back to launching the app so the
+/// user has somewhere to land instead of a silent dead-button. Logs the
+/// path it tried so debug.log captures every failed click.
 pub fn toggle(connect: bool) -> Result<(), String> {
-    let cli = warp_cli_path().ok_or_else(|| "warp-cli not found".to_string())?;
+    crate::glog!("warp: toggle(connect={connect}) called");
+    let cli = match warp_cli_path() {
+        Some(c) => c,
+        None => {
+            // Fallback: open the GUI app. The user can finish the
+            // connect/disconnect there.
+            if let Some(app) = warp_app_path() {
+                crate::glog!("warp: CLI missing, launching GUI: {}", app.display());
+                let _ = Command::new(&app).spawn();
+                return Err("warp-cli not found — launched WARP app instead".into());
+            }
+            crate::glog!("warp: neither CLI nor GUI app found");
+            return Err("Cloudflare WARP isn't installed".into());
+        }
+    };
+    crate::glog!("warp: using CLI at {}", cli.display());
     let cmd = if connect { "connect" } else { "disconnect" };
-    let status = Command::new(&cli)
+    let output = Command::new(&cli)
         .arg(cmd)
         .creation_flags(CREATE_NO_WINDOW)
-        .status()
-        .map_err(|e| format!("warp-cli {cmd} spawn failed: {e}"))?;
-    if !status.success() {
-        return Err(format!("warp-cli {cmd} returned non-zero"));
+        .output()
+        .map_err(|e| {
+            crate::glog!("warp: spawn failed: {e}");
+            format!("warp-cli {cmd} spawn failed: {e}")
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        crate::glog!("warp: {cmd} non-zero exit. stdout={stdout:?} stderr={stderr:?}");
+        return Err(format!("warp-cli {cmd}: {stderr}"));
     }
+    crate::glog!("warp: {cmd} succeeded");
     Ok(())
 }

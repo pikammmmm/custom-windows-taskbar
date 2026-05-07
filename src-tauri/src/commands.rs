@@ -533,6 +533,16 @@ pub fn audio_diagnostics() -> audio::AudioState {
     audio::current()
 }
 
+/// Append a single line to %APPDATA%\glassbar\debug.log from the
+/// frontend. Lets clipboard / dock / HUD JS log lifecycle events
+/// (panel-show focus events, click handlers, listener registrations)
+/// without each surface inventing its own console-routing scheme.
+/// Cheap enough to call freely; the logger drops on I/O failure.
+#[tauri::command]
+pub fn dbg_log(message: String) {
+    crate::glog!("[js] {message}");
+}
+
 #[tauri::command]
 pub fn set_mute(app: AppHandle, muted: bool) -> Result<(), String> {
     audio::set_mute(muted)?;
@@ -547,6 +557,15 @@ pub fn set_mute(app: AppHandle, muted: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn list_audio_devices() -> Result<Vec<audio::AudioDevice>, String> {
     audio::list_devices()
+}
+
+/// Same as list_audio_devices but takes a `flow` arg so the dock's volume
+/// menu can show separate sections for output (speakers/headphones) and
+/// input (microphones/line-in). Without this the menu only ever showed
+/// the output side.
+#[tauri::command]
+pub fn list_audio_devices_for(flow: audio::Flow) -> Result<Vec<audio::AudioDevice>, String> {
+    audio::list_devices_for(flow)
 }
 
 #[tauri::command]

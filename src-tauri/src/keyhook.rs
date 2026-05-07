@@ -53,11 +53,15 @@ pub fn take_power_menu_request() -> bool {
 /// its own message loop. The hook turns a "Win-alone" tap into a dock-toggle
 /// signal while preserving Win+key chords (Win+R, Win+E, etc).
 pub fn spawn() {
+    crate::glog!("keyhook::spawn called");
     std::thread::spawn(|| unsafe {
         let hook: HHOOK = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(callback), None, 0) {
-            Ok(h) => h,
+            Ok(h) => {
+                crate::glog!("keyhook: WH_KEYBOARD_LL installed, hwnd_handle={}", h.0 as isize);
+                h
+            }
             Err(e) => {
-                tracing::warn!("SetWindowsHookExW failed: {e}");
+                crate::glog!("keyhook: SetWindowsHookExW FAILED: {e} — Win+V/Win+X/dock toggle won't work");
                 return;
             }
         };
