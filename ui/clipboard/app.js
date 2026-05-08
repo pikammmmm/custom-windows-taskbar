@@ -179,6 +179,20 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Global refresh entry-point — Rust calls this directly via WebviewWindow::eval
+// after show_clipboard so we don't depend on event delivery (which the v0.1.13/14
+// debug logs proved is unreliable: the named listener AND the focus-gain handler
+// both failed to fire, leaving the panel stuck on its initial empty render). With
+// eval-driven refresh, the round-trip is just IPC for clipboard_history.
+window.__glassbarClipboardRefresh = function () {
+  logj('eval-refresh entry-point invoked');
+  filterInput.value = '';
+  activeIdx = 0;
+  refresh().then(() => {
+    try { filterInput.focus(); } catch {}
+  });
+};
+
 const win = getCurrentWindow();
 logj('panel JS module loaded, attaching listeners');
 win.onFocusChanged(({ payload: focused }) => {
