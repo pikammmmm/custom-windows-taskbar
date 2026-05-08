@@ -41,6 +41,13 @@ pub fn launch(path: String) -> Result<(), String> {
             .map(|_| ())
             .map_err(|e| format!("launch failed: {e}"));
     }
+    // Resolve stale versioned paths before doing anything else. Roblox,
+    // MSIX, and Squirrel apps all delete the previous version's directory
+    // on auto-update, which means a pinned path becomes a dead path the
+    // moment the user accepts an update. Find the live sibling instead so
+    // the click "just works."
+    let path = resolve_stale_versioned_path(&path).unwrap_or(path);
+    crate::glog!("launch: resolved path = {path}");
     // .exe runs directly via CreateProcess; everything else (docs, scripts,
     // .lnk shortcuts, archives, web URLs, …) goes through ShellExecuteW
     // with the "open" verb — same code path as double-clicking the file in
@@ -79,6 +86,114 @@ pub fn launch(path: String) -> Result<(), String> {
         app_actions::invoke_shell_verb(&path, "open")
             .map_err(|e| format!("launch failed: {e}"))
     }
+}
+
+/// If `path` exists, return None. Otherwise, when the path contains a
+/// versioned directory segment (`version-<hash>`, `app-X.Y.Z`, or an
+/// MSIX-style `Name_Ver_Arch__Hash` segment) that no longer exists,
+/// scan the parent of that segment for a sibling subdir with the same
+/// shape, prefer the one most recently modified, and reconstruct the
+/// path with the live segment swapped in.
+///
+/// Catches the most common "I clicked Roblox and nothing happened"
+/// failure mode: Roblox/Discord/Claude auto-update, the previous version
+/// dir is removed, the pinned exe path now points at nothing.
+fn resolve_stale_versioned_path(path: &str) -> Option<String> {
+    use std::path::{Component, PathBuf};
+    if std::path::Path::new(path).exists() {
+        return None;
+    }
+    let pb = PathBuf::from(path);
+    let comps: Vec<_> = pb.components().collect();
+
+    // Walk components looking for a versioned-shape segment. We test
+    // against three patterns: Squirrel `app-X.Y.Z`, Roblox `version-<id>`,
+    // MSIX `Name_Ver_Arch__Hash`. First match wins. (The earlier `?`
+    // here was a bug — it bailed out the entire function on the first
+    // *non*-versioned segment like `Users`, before we reached the real
+    // versioned dir deeper in the path.)
+    for (idx, c) in comps.iter().enumerate() {
+        let Component::Normal(seg) = c else { continue };
+        let seg_str = seg.to_string_lossy();
+        let Some(pattern) = detect_versioned_pattern(&seg_str) else { continue };
+        if !pattern.matches(&seg_str) { continue; }
+
+        // Reconstruct the parent path of this segment.
+        let mut parent = PathBuf::new();
+        for c in &comps[..idx] {
+            parent.push(c.as_os_str());
+        }
+        let parent = parent;
+        let Ok(rd) = std::fs::read_dir(&parent) else { return None };
+
+        // Find sibling subdirs that share the pattern, prefer most-recent.
+        let mut candidates: Vec<(std::path::PathBuf, std::time::SystemTime)> = rd
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if !pattern.matches(&name) { return None; }
+                let mtime = e.metadata().ok().and_then(|m| m.modified().ok())?;
+                Some((e.path(), mtime))
+            })
+            .collect();
+        if candidates.is_empty() { return None; }
+        candidates.sort_by_key(|(_, t)| std::cmp::Reverse(*t));
+
+        // Try each candidate in age order, pick the first whose
+        // reconstructed full path actually has the file we want.
+        let tail: PathBuf = comps[idx + 1..].iter().map(|c| c.as_os_str()).collect();
+        for (winner, _) in candidates {
+            let candidate_full = winner.join(&tail);
+            if candidate_full.exists() {
+                return Some(candidate_full.to_string_lossy().into_owned());
+            }
+        }
+        return None;
+    }
+    None
+}
+
+enum VersionedPattern {
+    Squirrel,
+    Versioned,
+    Msix { name: String, hash: String },
+}
+
+impl VersionedPattern {
+    fn matches(&self, seg: &str) -> bool {
+        let s = seg.to_lowercase();
+        match self {
+            VersionedPattern::Squirrel => s.starts_with("app-"),
+            VersionedPattern::Versioned => s.starts_with("version-"),
+            VersionedPattern::Msix { name, hash } => {
+                // `<name>_<ver>_<arch>__<hash>` — match by name + hash so
+                // we don't accidentally pick a different package family
+                // that happens to share a name prefix.
+                let parts: Vec<&str> = s.splitn(4, '_').collect();
+                if parts.len() != 4 { return false; }
+                let trailer = parts[3];
+                let trailer_parts: Vec<&str> = trailer.splitn(2, "__").collect();
+                if trailer_parts.len() != 2 { return false; }
+                parts[0] == name.to_lowercase() && trailer_parts[1] == hash.to_lowercase()
+            }
+        }
+    }
+}
+
+fn detect_versioned_pattern(seg: &str) -> Option<VersionedPattern> {
+    let s = seg.to_lowercase();
+    if s.starts_with("app-") { return Some(VersionedPattern::Squirrel); }
+    if s.starts_with("version-") { return Some(VersionedPattern::Versioned); }
+    // MSIX: Name_Ver_Arch__Hash. Need at least 3 underscores and a "__".
+    if !s.contains("__") { return None; }
+    let parts: Vec<&str> = s.splitn(4, '_').collect();
+    if parts.len() != 4 { return None; }
+    let trailer_parts: Vec<&str> = parts[3].splitn(2, "__").collect();
+    if trailer_parts.len() != 2 { return None; }
+    Some(VersionedPattern::Msix {
+        name: parts[0].to_string(),
+        hash: trailer_parts[1].to_string(),
+    })
 }
 
 /// Detect the Squirrel install layout (`<App>\app-VERSION\<App>.exe` with
@@ -1028,15 +1143,25 @@ pub fn show_clipboard(app: AppHandle) -> Result<(), String> {
         crate::dwm::strip_decorations(h);
         crate::dwm::suppress_nc_rendering(h);
     }
-    // Broadcast — emit_to("clipboard", ...) was being silently dropped on
-    // Tauri 2, so the panel JS never refreshed on subsequent shows. The
-    // first refresh fires from the JS module load (when history was empty),
-    // and without a working show event the panel stayed stuck on the
-    // empty-state forever — that was the v0.1.7..0.1.12 "clipboard isn't
-    // working" symptom. Other windows ignore this event because they
-    // don't listen for it; safe to broadcast.
+    // Broadcast emit + JS-eval bypass. The event is for surfaces that
+    // happen to listen, but the v0.1.13/14 logs proved the named
+    // listener AND the focus-gain handler both fail to fire on the
+    // user's machine — the panel becomes visible but never refreshes,
+    // which is the "Win+V opens an empty panel" symptom. Calling eval
+    // on the webview pokes the panel's global refresh function
+    // directly: no event bus, no focus-event race, no Tauri 2 weird
+    // emit semantics. JS exposes __glassbarClipboardRefresh on module
+    // load. We schedule on the next macrotask via setTimeout(0) so the
+    // call lands after Tauri's own show-pipeline finishes initialising
+    // the webview state.
     let _ = app.emit("clipboard:show", ());
-    crate::glog!("show_clipboard: clipboard:show event emitted");
+    let _ = win.eval(
+        "setTimeout(() => { \
+            try { window.__glassbarClipboardRefresh && window.__glassbarClipboardRefresh(); } \
+            catch (e) { console.error('clipboard refresh eval failed', e); } \
+        }, 0);"
+    );
+    crate::glog!("show_clipboard: clipboard:show emitted + eval-refresh dispatched");
     Ok(())
 }
 
