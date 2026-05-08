@@ -169,6 +169,7 @@ fn main() {
             commands::list_audio_devices,
             commands::list_audio_devices_for,
             commands::set_default_audio_device,
+            commands::set_keyboard_layout,
             commands::dbg_log,
             commands::warp_toggle,
             commands::power_action,

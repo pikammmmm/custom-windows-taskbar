@@ -45,6 +45,8 @@ const tray = {
   vol: document.getElementById('tray-vol'),
   volIcon: document.getElementById('tray-vol-icon'),
   volVal: document.getElementById('tray-vol-val'),
+  lang: document.getElementById('tray-lang'),
+  langVal: document.getElementById('tray-lang-val'),
   clock: document.getElementById('tray-clock'),
   time: document.getElementById('tray-time'),
   media: document.getElementById('tray-media'),
@@ -55,6 +57,9 @@ const tray = {
   mediaArt: document.getElementById('tray-media-art'),
   mediaNext: document.getElementById('tray-media-next'),
 };
+// Cache the latest installed-layout list so the click handler doesn't
+// have to wait for the next snapshot tick to know what menu to show.
+let lastKeyboardState = null;
 // Track the currently-displayed thumbnail so we know when to actually
 // touch the <img> src (which forces a re-decode). Comparing against the
 // element's existing src is unreliable — browsers normalise data URLs.
@@ -670,6 +675,22 @@ function updateTray(snap) {
     tray.volIcon.textContent = volIconFor(snap.audio.volume_percent, snap.audio.muted);
     tray.volVal.textContent = `${snap.audio.volume_percent}%`;
   }
+  // Keyboard layout chip — only render when there's at least 2 layouts
+  // installed (a single-layout system has no use for the chip and the
+  // tray real-estate is precious).
+  const kb = snap.keyboard;
+  if (kb && kb.installed && kb.installed.length >= 2 && kb.current) {
+    lastKeyboardState = kb;
+    tray.lang.hidden = false;
+    tray.langVal.textContent = kb.current.code.slice(0, 3).toUpperCase();
+    tray.lang.title = `${kb.current.name} · click to switch`;
+  } else if (kb && kb.current) {
+    // Single layout — still cache for completeness but keep chip hidden.
+    lastKeyboardState = kb;
+    tray.lang.hidden = true;
+  } else {
+    tray.lang.hidden = true;
+  }
   if (snap.internet) {
     tray.netIcon.textContent = snap.internet.online ? '●' : '○';
     tray.net.classList.toggle('offline', !snap.internet.online);
@@ -736,6 +757,40 @@ tray.mediaNext.addEventListener('click', (ev) => {
   ev.stopPropagation();
   invoke('media_next').catch(() => {});
 });
+// Language chip — popup menu listing every installed layout, click any
+// to activate it. Same flow the OS uses when you pick from the
+// taskbar language flyout.
+tray.lang.addEventListener('click', async (e) => {
+  if (!lastKeyboardState || !lastKeyboardState.installed?.length) return;
+  const items = [{ kind: 'header', name: 'Keyboard layout' }];
+  items.push({ kind: 'separator' });
+  for (const layout of lastKeyboardState.installed) {
+    const isActive = lastKeyboardState.current?.hkl === layout.hkl;
+    items.push({
+      kind: 'item',
+      glyph: isActive ? '●' : '○',
+      label: `${layout.code} · ${layout.name}`,
+      action: 'set_keyboard_layout',
+      args: { hkl: layout.hkl },
+    });
+  }
+  items.push({ kind: 'separator' });
+  items.push({
+    kind: 'item', glyph: '⚙', label: 'Language settings',
+    action: 'launch_uri', args: { uri: 'ms-settings:keyboard' },
+  });
+  const dpr = window.devicePixelRatio || 1;
+  await invoke('show_menu', {
+    args: {
+      items,
+      x: Math.round(e.screenX * dpr),
+      y: Math.round(e.screenY * dpr),
+      width: 280,
+      height: estimateMenuHeight(items),
+    },
+  }).catch(() => {});
+});
+
 tray.vol.addEventListener('click', async (e) => {
   const items = [];
 

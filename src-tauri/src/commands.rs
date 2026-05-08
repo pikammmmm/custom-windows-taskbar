@@ -1,6 +1,6 @@
 use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
 use crate::win32::CommandHidden;
-use crate::widgets::{audio, clipboard as clip, files, media, start_menu, warp, weather};
+use crate::widgets::{audio, clipboard as clip, files, keyboard, media, start_menu, warp, weather};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
@@ -646,6 +646,14 @@ pub fn get_settings_volume() -> Option<u8> {
 pub fn audio_diagnostics() -> audio::AudioState {
     audio::log_endpoint_diagnostics();
     audio::current()
+}
+
+/// Switch the active keyboard layout to the layout identified by the
+/// raw HKL value (returned in the snapshot's `keyboard.installed`).
+/// Same effect as Win+Space, scoped to the foreground window.
+#[tauri::command]
+pub fn set_keyboard_layout(hkl: u32) -> Result<(), String> {
+    keyboard::activate(hkl)
 }
 
 /// Append a single line to %APPDATA%\glassbar\debug.log from the

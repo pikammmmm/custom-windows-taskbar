@@ -1,4 +1,4 @@
-use crate::widgets::{audio, battery, clock, internet, media, network, sysstats, thermal, warp, weather};
+use crate::widgets::{audio, battery, clock, internet, keyboard, media, network, sysstats, thermal, warp, weather};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -12,6 +12,7 @@ pub struct HudSnapshot {
     pub internet: internet::InternetState,
     pub sysstats: sysstats::SysStats,
     pub thermal: thermal::ThermalState,
+    pub keyboard: keyboard::KeyboardState,
     pub battery: battery::BatteryState,
     pub weather: weather::WeatherState,
     pub warp: warp::WarpState,
@@ -39,6 +40,7 @@ pub fn spawn(app: AppHandle, tick: Duration) {
                 internet: inet.current(),
                 sysstats: sysstats::current(),
                 thermal: thermal_probe.current(),
+                keyboard: keyboard::current(),
                 battery: battery::current(),
                 weather: wx.current(),
                 warp: warp_probe.current(),
@@ -68,6 +70,7 @@ fn snapshot_equivalent(a: &HudSnapshot, b: &HudSnapshot) -> bool {
         && a.internet == b.internet
         && a.sysstats == b.sysstats
         && a.thermal == b.thermal
+        && a.keyboard == b.keyboard
         && a.battery == b.battery
         && a.weather == b.weather
         && a.warp == b.warp
