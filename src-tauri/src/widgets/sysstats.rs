@@ -5,8 +5,12 @@ use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 pub struct SysStats {
-    pub cpu_percent: u8,
-    pub mem_percent: u8,
+    /// 0.0..=100.0. Kept as f32 (not u8) so the snapshot equality check
+    /// in widget_state catches sub-1% fluctuations and the HUD CPU
+    /// readout actually animates instead of showing the same integer
+    /// value frozen for seconds at a time. Frontend rounds for display.
+    pub cpu_percent: f32,
+    pub mem_percent: f32,
     pub mem_used_gb: f32,
     pub mem_total_gb: f32,
 }
@@ -35,14 +39,14 @@ pub fn current() -> SysStats {
     // satisfied across calls — we don't sleep here.
     let cpus = s.cpus();
     let cpu_percent = if cpus.is_empty() {
-        0
+        0.0
     } else {
         let avg = cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32;
-        avg.clamp(0.0, 100.0) as u8
+        avg.clamp(0.0, 100.0)
     };
     let total = s.total_memory().max(1);
     let used = s.used_memory();
-    let mem_percent = ((used as f64 / total as f64) * 100.0).clamp(0.0, 100.0) as u8;
+    let mem_percent = ((used as f64 / total as f64) * 100.0).clamp(0.0, 100.0) as f32;
     let mem_used_gb = used as f32 / 1024.0 / 1024.0 / 1024.0;
     let mem_total_gb = total as f32 / 1024.0 / 1024.0 / 1024.0;
     SysStats { cpu_percent, mem_percent, mem_used_gb, mem_total_gb }
