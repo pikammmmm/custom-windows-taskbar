@@ -1,4 +1,4 @@
-use crate::widgets::{audio, battery, clock, internet, media, network, sysstats, warp, weather};
+use crate::widgets::{audio, battery, clock, internet, media, network, sysstats, thermal, warp, weather};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -11,6 +11,7 @@ pub struct HudSnapshot {
     pub audio: audio::AudioState,
     pub internet: internet::InternetState,
     pub sysstats: sysstats::SysStats,
+    pub thermal: thermal::ThermalState,
     pub battery: battery::BatteryState,
     pub weather: weather::WeatherState,
     pub warp: warp::WarpState,
@@ -22,6 +23,7 @@ pub fn spawn(app: AppHandle, tick: Duration) {
         let inet = internet::Probe::spawn();
         let wx = weather::Probe::spawn();
         let warp_probe = warp::Probe::spawn();
+        let thermal_probe = thermal::Probe::spawn();
         sysstats::prime();
         let mut prev_snapshot: Option<HudSnapshot> = None;
         let mut last_emit = Instant::now() - Duration::from_secs(1);
@@ -36,6 +38,7 @@ pub fn spawn(app: AppHandle, tick: Duration) {
                 audio: audio::current(),
                 internet: inet.current(),
                 sysstats: sysstats::current(),
+                thermal: thermal_probe.current(),
                 battery: battery::current(),
                 weather: wx.current(),
                 warp: warp_probe.current(),
@@ -54,12 +57,17 @@ pub fn spawn(app: AppHandle, tick: Duration) {
 }
 
 /// Comparison that ignores second-level clock changes — frontend ticks seconds itself.
+/// sysstats deliberately uses f32 percent fields so this PartialEq picks
+/// up sub-1% fluctuations and the HUD CPU readout actually animates;
+/// without that the integer-rounded values stayed equal across many
+/// ticks and the panel looked frozen.
 fn snapshot_equivalent(a: &HudSnapshot, b: &HudSnapshot) -> bool {
     a.network == b.network
         && a.media == b.media
         && a.audio == b.audio
         && a.internet == b.internet
         && a.sysstats == b.sysstats
+        && a.thermal == b.thermal
         && a.battery == b.battery
         && a.weather == b.weather
         && a.warp == b.warp

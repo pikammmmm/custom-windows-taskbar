@@ -22,6 +22,8 @@ const el = {
   cpuBar: document.getElementById('cpu-bar'),
   ramVal: document.getElementById('ram-val'),
   ramBar: document.getElementById('ram-bar'),
+  tempVal: document.getElementById('temp-val'),
+  tempBar: document.getElementById('temp-bar'),
   wxIcon: document.getElementById('wx-icon'),
   wxTemp: document.getElementById('wx-temp'),
   wxCond: document.getElementById('wx-cond'),
@@ -129,13 +131,38 @@ function render() {
     el.volIcon.textContent = '🔈';
   }
 
-  // Sysstats
+  // Sysstats — server now sends f32 percents so the values fluctuate
+  // and trigger snapshot emits even on a quiet system. We round only at
+  // display time so the bar fill animates with sub-percent precision.
   const ss = lastSnapshot.sysstats;
   if (ss) {
-    el.cpuVal.textContent = `${ss.cpu_percent}%`;
+    el.cpuVal.textContent = `${Math.round(ss.cpu_percent)}%`;
     setBarLevel(el.cpuBar, ss.cpu_percent);
-    el.ramVal.textContent = `${ss.mem_percent}%`;
+    el.ramVal.textContent = `${Math.round(ss.mem_percent)}%`;
     setBarLevel(el.ramBar, ss.mem_percent);
+  }
+
+  // CPU temperature — tries ACPI thermal zones first, falls back to
+  // LibreHardwareMonitor / OpenHardwareMonitor WMI namespaces if either
+  // is running. Bar treats 30°C → 100°C as the visual range. When no
+  // source is available we point the user at LHM, which is the
+  // user-mode answer for desktops where Windows itself doesn't expose
+  // anything (most modern Ryzen / Intel desktops).
+  const tempChip = document.getElementById('temp-chip');
+  const t = lastSnapshot.thermal;
+  if (t && typeof t.celsius === 'number') {
+    el.tempVal.textContent = `${t.celsius}°C`;
+    const tempPct = Math.max(0, Math.min(100, ((t.celsius - 30) / 70) * 100));
+    setBarLevel(el.tempBar, tempPct);
+    tempChip.title = `CPU temperature · source: ${t.source || 'unknown'}`;
+    tempChip.classList.remove('chip-nodata');
+  } else {
+    el.tempVal.textContent = '—°';
+    setBarLevel(el.tempBar, 0);
+    tempChip.title =
+      'No CPU temperature source found. Install LibreHardwareMonitor and ' +
+      'leave it running — glassbar will pick up its readings automatically.';
+    tempChip.classList.add('chip-nodata');
   }
 
   // Cloudflare WARP — colour the button + tooltip from the latest probe.

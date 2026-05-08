@@ -11,3 +11,4 @@ pub mod battery;
 pub mod warp;
 pub mod weather;
 pub mod clipboard;
+pub mod thermal;
