@@ -107,62 +107,65 @@ function isSystemExe(exe) {
   return SYSTEM_EXES.has(exeName(exe).toLowerCase());
 }
 
-// True when `runningExe` and `pinnedExe` should be considered the same
-// app even though their paths differ. Catches three cases that
-// previously caused the same app to appear twice on the dock — once as
-// a no-indicator pinned icon, once as a "running" extra:
+// Normalise an exe path so that two paths differing only in version
+// segments collapse to the same string. Handles every distribution
+// shape we've encountered on real user machines:
 //
-//   1. Squirrel apps (Discord, Slack, GitHub Desktop, WhatsApp, older
-//      Atom/Teams) — pinned to Update.exe, run as
-//      `app-VERSION\App.exe`. After auto-update the version segment
-//      changes and even an exact-path-stored pin breaks.
-//   2. Same exe via 8.3 short path vs long path
-//      (`C:\PROGRA~1\App` vs `C:\Program Files\App`).
-//   3. Auto-updater that drops the exe at a sibling path on each
-//      release.
+//   • MSIX / UWP / Store apps:
+//     `\WindowsApps\Claude_1.6259.1.0_x64__pzs8sxrjxfjjc\app\Claude.exe`
+//     The package name segment is `<Name>_<Version>_<Arch>__<Hash>`;
+//     we strip the `_Version_Arch` part and keep `<Name>__UWP_<Hash>`
+//     so packages from different publishers can't collide.
 //
-// The fallbacks lean on filename + parent-directory similarity. False
-// positives (two genuinely different apps merged) are rare because two
-// different apps almost never share both filename AND grandparent dir.
-function pathsMatchSameApp(runningExe, pinnedExe) {
-  if (!runningExe || !pinnedExe) return false;
-  const r = runningExe.toLowerCase().replace(/\//g, '\\');
-  const p = pinnedExe.toLowerCase().replace(/\//g, '\\');
-  if (r === p) return true;
-
-  const rBase = r.split('\\').pop();
-  const pBase = p.split('\\').pop();
-
-  // Squirrel: pinned is `<root>\Update.exe`, running is
-  // `<root>\app-<ver>\App.exe`. The shared prefix is the install root.
-  // Detect either direction (some users reverse-pin too).
-  if (pBase === 'update.exe') {
-    const root = p.slice(0, p.lastIndexOf('\\'));
-    if (r.startsWith(root + '\\app-')) return true;
-  }
-  if (rBase === 'update.exe') {
-    const root = r.slice(0, r.lastIndexOf('\\'));
-    if (p.startsWith(root + '\\app-')) return true;
-  }
-
-  // Same filename AND share the grandparent dir — covers the
-  // version-bump case where only the `app-X.Y.Z` segment changed.
-  if (rBase === pBase && rBase !== 'update.exe') {
-    const stripVersionedAppDir = (s) =>
-      s.replace(/\\app-[\d.]+\\[^\\]+$/, '\\__APP__');
-    if (stripVersionedAppDir(r) === stripVersionedAppDir(p)) return true;
-  }
-
-  return false;
+//   • Squirrel apps (Discord, Slack, GitHub Desktop, WhatsApp, older
+//     Atom/Teams): `\app-1.0.9235\App.exe`. After auto-update the
+//     versioned dir changes; we collapse it to `\__SQUIRREL__\`.
+//
+//   • Roblox-style hash-versioned dirs: `\version-acc4b74f79e743b9\`.
+//     Roblox's own auto-updater rotates the hash on every release so
+//     even a same-day repin breaks. Collapse to `\__VERSIONED__\`.
+//
+//   • Generic `version-X.Y.Z` style — same treatment.
+function canonicalPath(p) {
+  let s = String(p).toLowerCase().replace(/\//g, '\\');
+  // MSIX / UWP package dir.
+  s = s.replace(
+    /\\([^\\_]+)_[\d.]+_[a-z0-9]+__([a-z0-9]+)\\/g,
+    '\\$1__uwp_$2\\'
+  );
+  // Squirrel versioned app dir.
+  s = s.replace(/\\app-[\w.]+\\/g, '\\__squirrel__\\');
+  // Roblox / generic version-tagged dir.
+  s = s.replace(/\\version-[a-z0-9.]+\\/g, '\\__versioned__\\');
+  return s;
 }
 
-// Strip the `app-X.Y.Z` segment so the icon → DOM cache survives version
-// bumps (otherwise renderCenter() would build a fresh node tree on every
-// auto-update tick).
-function appKey(exePath) {
-  return exePath.toLowerCase()
-    .replace(/\//g, '\\')
-    .replace(/\\app-[\d.]+\\/, '\\__APP__\\');
+// True when `a` and `b` should be treated as the same app despite
+// path differences. False-positive risk is low because two genuinely
+// different apps almost never share basename, package name, AND
+// grandparent dir after canonicalisation.
+function pathsMatchSameApp(a, b) {
+  if (!a || !b) return false;
+  const ca = canonicalPath(a);
+  const cb = canonicalPath(b);
+  if (ca === cb) return true;
+
+  // Squirrel Update.exe vs app-VERSION\App.exe — pinned-to-Update.exe
+  // is a separate flavour from the regular versioned-dir case because
+  // the basenames differ (Update.exe vs Discord.exe).
+  const aLower = a.toLowerCase().replace(/\//g, '\\');
+  const bLower = b.toLowerCase().replace(/\//g, '\\');
+  const aBase = aLower.split('\\').pop();
+  const bBase = bLower.split('\\').pop();
+  if (aBase === 'update.exe') {
+    const root = aLower.slice(0, aLower.lastIndexOf('\\'));
+    if (bLower.startsWith(root + '\\app-')) return true;
+  }
+  if (bBase === 'update.exe') {
+    const root = bLower.slice(0, bLower.lastIndexOf('\\'));
+    if (aLower.startsWith(root + '\\app-')) return true;
+  }
+  return false;
 }
 
 // Maintain the recents map: exes that vanished from the running list since
@@ -175,11 +178,15 @@ function updateRecents(currentRunningExes, visibleRunning) {
     if (now - val.closedAt > RECENTS_TTL_MS) recentsByExe.delete(key);
   }
   // Anything we knew was running last tick but isn't now → moved to recents.
-  // Skip pinned items (they're already present) and system exes.
-  const pinSetLc = new Set(pinned.map(p => p.path.toLowerCase()));
+  // Skip pinned items (they're already present) and system exes. Use
+  // smart match so e.g. a pinned MSIX Claude doesn't end up in recents
+  // just because the version-suffixed running path didn't string-match
+  // the pinned path.
+  const isPinnedSmart = (exeLc) =>
+    pinned.some(p => pathsMatchSameApp(p.path, exeLc));
   for (const exeLc of prevRunningExes) {
     if (currentRunningExes.has(exeLc)) continue;
-    if (pinSetLc.has(exeLc)) continue;
+    if (isPinnedSmart(exeLc)) continue;
     if (recentsByExe.has(exeLc)) continue;
     // Need the original-cased path for launch — pull it from the most
     // recent visibleRunning entry that matches when present, otherwise
@@ -207,20 +214,31 @@ let prevVisibleRunningByExe = new Map();
 // ─────────────────────────────────────────────────────────────────────────
 async function renderCenter() {
   const visibleRunning = running.filter(a => !isSystemExe(a.exe_path));
-  // Use smart path matching so Squirrel apps (Discord, Slack) — which
-  // pin to Update.exe but run from `app-VERSION\App.exe` — don't double
-  // up as both a pinned icon and a separate "running extra" icon.
+
+  // Dedupe pinned-vs-pinned via smart match too — the user had two
+  // Roblox Player entries (different version-hash paths) because the
+  // taskbar-pin sync added the new version on each Roblox auto-update
+  // without recognising it as the same app. Render only one icon.
+  const dedupedPinned = [];
+  for (const p of pinned) {
+    if (dedupedPinned.some(q => pathsMatchSameApp(q.path, p.path))) continue;
+    dedupedPinned.push(p);
+  }
+
+  // Use smart path matching so Squirrel + UWP apps — which differ from
+  // their pinned path on every auto-update — don't double up as both a
+  // pinned icon and a separate "running extra" icon.
   const matchingRunningFor = (pinnedExe) =>
     visibleRunning.find(a => pathsMatchSameApp(a.exe_path, pinnedExe));
   const claimedRunning = new Set();
-  for (const p of pinned) {
+  for (const p of dedupedPinned) {
     const m = matchingRunningFor(p.path);
     if (m) claimedRunning.add(m.exe_path.toLowerCase());
   }
   const pinnedExtras = visibleRunning.filter(
     a => !claimedRunning.has(a.exe_path.toLowerCase())
   );
-  const pinSet = new Set(pinned.map(p => p.path.toLowerCase()));
+  const pinSet = new Set(dedupedPinned.map(p => p.path.toLowerCase()));
 
   // Bounce any exe that has a running window now but didn't last render.
   // We compare against the running set (not the union with pinned) so that
@@ -247,7 +265,7 @@ async function renderCenter() {
   center.innerHTML = '';
   nodeByExe.clear();
 
-  for (const p of pinned) {
+  for (const p of dedupedPinned) {
     const exe = p.path;
     const matched = matchingRunningFor(exe);
     const node = await iconNode({
@@ -264,7 +282,7 @@ async function renderCenter() {
     nodeByExe.set(exe.toLowerCase(), node);
     center.appendChild(node);
   }
-  if (pinned.length && pinnedExtras.length) {
+  if (dedupedPinned.length && pinnedExtras.length) {
     const div = document.createElement('div');
     div.className = 'dock-divider';
     center.appendChild(div);
@@ -280,7 +298,7 @@ async function renderCenter() {
     nodeByExe.set(a.exe_path.toLowerCase(), node);
     center.appendChild(node);
   }
-  if (recents.length && (pinned.length || pinnedExtras.length)) {
+  if (recents.length && (dedupedPinned.length || pinnedExtras.length)) {
     const div = document.createElement('div');
     div.className = 'dock-divider';
     center.appendChild(div);
