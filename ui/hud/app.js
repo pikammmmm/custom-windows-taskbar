@@ -578,18 +578,25 @@ async function init() {
   // because the DOM doesn't change — we force it by toggling .hud-replay,
   // which restarts `animation: hud-in` via a no-op style flush.
   const hudEl = document.getElementById('hud');
-  await listen('hud:show-anim', () => {
+  // Globals so Rust can poke us via WebviewWindow::eval as a backstop
+  // — same pattern as the clipboard panel; emit_to('hud', …) was being
+  // silently dropped on Tauri 2, leaving the volume slider stuck on
+  // its previous value (the "sound resets when I reopen the HUD"
+  // symptom: render() runs against a stale snapshot until the next
+  // tick lands, so the slider shows whatever value it had + missing
+  // entrance animation).
+  window.__glassbarHudPlayShowAnim = () => {
     hudEl.classList.remove('hiding');
     hudEl.style.animation = 'none';
     void hudEl.offsetHeight;
     hudEl.style.animation = '';
-    // Re-seed the volume so the slider reflects the persisted value
-    // even if the snapshot poller hasn't ticked since the last show.
     seedVolumeFromSettings();
-  });
-  await listen('hud:hide-anim', () => {
+  };
+  window.__glassbarHudPlayHideAnim = () => {
     hudEl.classList.add('hiding');
-  });
+  };
+  await listen('hud:show-anim', () => window.__glassbarHudPlayShowAnim());
+  await listen('hud:hide-anim', () => window.__glassbarHudPlayHideAnim());
 
   render();
   renderApps();

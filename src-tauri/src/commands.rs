@@ -55,6 +55,18 @@ pub fn launch(path: String) -> Result<(), String> {
     // contain cmd metacharacters or unusual shell associations (game
     // launcher .lnks were a recurring miss).
     let is_exe = path.to_lowercase().ends_with(".exe");
+    // UWP / MSIX apps installed under \Program Files\WindowsApps\ have
+    // restricted ACLs — direct CreateProcess often fails with access
+    // denied even though Explorer can launch them. Route those through
+    // ShellExecute "open" verb instead, which uses the package's
+    // declared entry point. This is what lets the user re-open closed
+    // Microsoft Store apps (Terminal, Calculator, Claude) from the
+    // dock without seeing "nothing happens" silent failures.
+    if is_exe && path.to_lowercase().contains("\\windowsapps\\") {
+        crate::glog!("launch: routing WindowsApps path via ShellExecute");
+        return app_actions::invoke_shell_verb(&path, "open")
+            .map_err(|e| format!("launch failed: {e}"));
+    }
     if is_exe {
         // Squirrel-installed apps (Discord, Slack, GitHub Desktop, WhatsApp,
         // Teams (older), Atom, etc.) live at <App>\app-VERSION\<App>.exe
@@ -166,15 +178,19 @@ impl VersionedPattern {
             VersionedPattern::Squirrel => s.starts_with("app-"),
             VersionedPattern::Versioned => s.starts_with("version-"),
             VersionedPattern::Msix { name, hash } => {
-                // `<name>_<ver>_<arch>__<hash>` — match by name + hash so
-                // we don't accidentally pick a different package family
-                // that happens to share a name prefix.
-                let parts: Vec<&str> = s.splitn(4, '_').collect();
-                if parts.len() != 4 { return false; }
-                let trailer = parts[3];
-                let trailer_parts: Vec<&str> = trailer.splitn(2, "__").collect();
-                if trailer_parts.len() != 2 { return false; }
-                parts[0] == name.to_lowercase() && trailer_parts[1] == hash.to_lowercase()
+                // `<name>_<ver>_<arch>__<hash>`. Split on `__` first so
+                // the hash separator isn't eaten by the leading splitn
+                // on `_` (the bug the previous shape had — splitn(4,
+                // '_') consumed all four underscores in
+                // `Microsoft.WindowsTerminal_1.24.10921.0_x64__8wekyb…`
+                // and the `__hash` half lost its `__` marker).
+                let Some((left, right)) = s.split_once("__") else { return false };
+                // left = `<name>_<ver>_<arch>`. rsplit so we pick name
+                // off the front even if name contains underscores.
+                let left_parts: Vec<&str> = left.rsplitn(3, '_').collect();
+                if left_parts.len() != 3 { return false; }
+                let other_name = left_parts[2];
+                other_name == name.to_lowercase() && right == hash.to_lowercase()
             }
         }
     }
@@ -184,15 +200,14 @@ fn detect_versioned_pattern(seg: &str) -> Option<VersionedPattern> {
     let s = seg.to_lowercase();
     if s.starts_with("app-") { return Some(VersionedPattern::Squirrel); }
     if s.starts_with("version-") { return Some(VersionedPattern::Versioned); }
-    // MSIX: Name_Ver_Arch__Hash. Need at least 3 underscores and a "__".
-    if !s.contains("__") { return None; }
-    let parts: Vec<&str> = s.splitn(4, '_').collect();
-    if parts.len() != 4 { return None; }
-    let trailer_parts: Vec<&str> = parts[3].splitn(2, "__").collect();
-    if trailer_parts.len() != 2 { return None; }
+    // MSIX: Name_Ver_Arch__Hash. Split on `__` first so we don't
+    // mis-allocate underscores between segments.
+    let (left, right) = s.split_once("__")?;
+    let left_parts: Vec<&str> = left.rsplitn(3, '_').collect();
+    if left_parts.len() != 3 { return None; }
     Some(VersionedPattern::Msix {
-        name: parts[0].to_string(),
-        hash: trailer_parts[1].to_string(),
+        name: left_parts[2].to_string(),
+        hash: right.to_string(),
     })
 }
 
@@ -766,7 +781,11 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
     if visible {
         // Play the HUD's outgoing CSS animation, then hide the window after
         // it finishes — without the delay we'd flash off mid-animation.
+        // emit_to+eval pair: eval is the reliable backstop because
+        // emit_to can be silently dropped on Tauri 2 (same root cause as
+        // the clipboard-empty bug).
         let _ = app.emit_to("hud", "hud:hide-anim", ());
+        let _ = win.eval("window.__glassbarHudPlayHideAnim && window.__glassbarHudPlayHideAnim();");
         let win_clone = win.clone();
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(190));
@@ -776,8 +795,14 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
     } else {
         win.show().map_err(|e| e.to_string())?;
         win.set_always_on_top(true).map_err(|e| e.to_string())?;
-        // Fire-and-forget — HUD JS retriggers the entrance animation.
+        // Same eval bypass as clipboard show. The named event
+        // (hud:show-anim) was missed often enough that the volume slider
+        // and entrance animation didn't replay on reopen — the HUD
+        // looked like it had reset to defaults. Eval is the reliable
+        // path; the named emit stays as a fast-path for surfaces that
+        // happen to receive it.
         let _ = app.emit_to("hud", "hud:show-anim", ());
+        let _ = win.eval("window.__glassbarHudPlayShowAnim && window.__glassbarHudPlayShowAnim();");
         Ok(true)
     }
 }

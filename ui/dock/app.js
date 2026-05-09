@@ -99,11 +99,22 @@ async function getIcon(exePath, hwnd) {
 }
 
 const SYSTEM_EXES = new Set([
+  // Shell + framework hosts.
   'applicationframehost', 'sihost', 'startmenuexperiencehost',
   'searchhost', 'shellexperiencehost', 'textinputhost', 'systemsettings',
   'lockapp', 'usercpl', 'fontdrvhost', 'dwm', 'csrss', 'wininit',
   'services', 'lsass', 'svchost', 'taskhostw', 'runtimebroker',
   'ctfmon', 'conhost', 'dllhost', 'wmiprvse', 'explorer',
+  // Win11 widgets + Game Bar + Xbox surfaces — these spawn cloaked
+  // windows that occasionally un-cloak briefly and would otherwise
+  // pop into the dock as a "ghost icon" the user can't get rid of.
+  'widgets', 'widgetservice',
+  'gamebar', 'gamebarftserver', 'gamebarpresencewriter',
+  'xboxpcappft', 'gamingservices', 'gamingservicesnet',
+  // Cross-device + phone link host windows.
+  'phoneexperiencehost', 'crossdeviceservice', 'crossdeviceresume',
+  // Misc OOBE + privacy popovers that occasionally surface a window.
+  'usernotificationsservice', 'narrator',
 ]);
 function exeName(exe) {
   return exe.split('\\').pop().replace(/\.exe$/i, '');
