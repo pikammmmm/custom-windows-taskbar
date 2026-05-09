@@ -1,8 +1,9 @@
 use anyhow::{Result, anyhow};
 use windows::Win32::Foundation::{HWND, BOOL, LPARAM, TRUE, CloseHandle};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowTextW, IsWindowVisible, GetWindowLongW, GWL_EXSTYLE,
-    WS_EX_TOOLWINDOW, GetWindowThreadProcessId, SetForegroundWindow, ShowWindow,
+    EnumWindows, GetWindow, GetWindowTextW, IsWindowVisible, GetWindowLongW, GWL_EXSTYLE,
+    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, GW_OWNER, GetWindowThreadProcessId, SetForegroundWindow, ShowWindow,
     SW_MINIMIZE, SW_RESTORE, IsIconic, GetForegroundWindow, PostMessageW, WM_CLOSE,
 };
 use windows::Win32::System::Threading::{
@@ -36,6 +37,34 @@ unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     }
     let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
     if (ex_style as u32) & WS_EX_TOOLWINDOW.0 != 0 {
+        return TRUE;
+    }
+
+    // DWM cloaking — modern Win10/11 UWP apps suspend background
+    // windows by cloaking them. They pass IsWindowVisible (the W flag
+    // is still set) but the OS doesn't actually render them. Win+W
+    // widget hosts, Xbox Game Bar pinned widgets, frozen Store apps
+    // all show up here. The standard "is this window real" check is
+    // DwmGetWindowAttribute(DWMWA_CLOAKED) — non-zero = cloaked.
+    let mut cloaked: i32 = 0;
+    if DwmGetWindowAttribute(
+        hwnd,
+        DWMWA_CLOAKED,
+        &mut cloaked as *mut _ as *mut _,
+        std::mem::size_of::<i32>() as u32,
+    ).is_ok() && cloaked != 0
+    {
+        return TRUE;
+    }
+
+    // Owner check — popups, tooltips, and child-style helper windows
+    // get owners. They're alt-tab-invisible too. Skip unless the window
+    // explicitly opted into being treated as an app window
+    // (WS_EX_APPWINDOW), which is what genuine secondary main windows
+    // use.
+    let owner = GetWindow(hwnd, GW_OWNER).unwrap_or_default();
+    let app_window = (ex_style as u32) & WS_EX_APPWINDOW.0 != 0;
+    if !owner.0.is_null() && !app_window {
         return TRUE;
     }
 
