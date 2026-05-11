@@ -157,12 +157,12 @@ function render() {
     tempChip.classList.remove('chip-nodata');
     tempChip.style.cursor = 'default';
   } else {
-    el.tempVal.textContent = 'install';
+    el.tempVal.textContent = '—°';
     setBarLevel(el.tempBar, 0);
     tempChip.title =
-      'No CPU temperature source found on this machine.\n' +
+      'No CPU temperature source found.\n' +
       'Click to open LibreHardwareMonitor — install it, enable ' +
-      '"Publish to WMI" in the Options menu, leave it running. ' +
+      '"Publish to WMI" in its Options menu, leave it running. ' +
       'glassbar will pick up readings automatically.';
     tempChip.classList.add('chip-nodata');
     tempChip.style.cursor = 'pointer';
