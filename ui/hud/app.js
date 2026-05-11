@@ -576,24 +576,51 @@ el.volIcon.addEventListener('click', () => {
   invoke('set_mute', { muted: !lastSnapshot.audio.muted }).catch(() => {});
 });
 
-// Seed the slider from the *current* system volume (not the last-persisted
-// glassbar value). Previously we used the persisted setting, but that
-// went stale whenever the user changed volume via media keys or the
-// Windows tray slider since the last glassbar interaction — the HUD
-// would reopen showing 35% while the system was actually at 60%, until
-// the next snapshot tick (~400ms) corrected it. Reading the live
-// endpoint is just as fast and always accurate.
+// Seed the slider from the *current* system volume on HUD reopen, plus
+// pin the result into lastSnapshot.audio so the next render() doesn't
+// immediately overwrite it with a stale snapshot value. Previously the
+// seed was a brief flash and the next 1s render tick reset the slider
+// to whatever lastSnapshot still held — that was the "volume breaks on
+// reopen" symptom.
 async function seedVolumeFromSettings() {
   try {
+    // Live system query first.
     const state = await invoke('get_current_volume');
-    if (!state || !state.has_device) return;
-    const pct = state.volume_percent;
+    let pct = null;
+    let muted = false;
+    let hasDevice = false;
+    if (state && state.has_device) {
+      pct = state.volume_percent;
+      muted = !!state.muted;
+      hasDevice = true;
+    } else {
+      // Fallback to persisted glassbar value if no audio device is
+      // currently routable (briefly the case during device switches).
+      const fallback = await invoke('get_settings_volume');
+      if (typeof fallback === 'number') pct = fallback;
+    }
+    invoke('dbg_log', {
+      message: `hud seed volume pct=${pct} muted=${muted} hasDevice=${hasDevice}`,
+    }).catch(() => {});
+    if (pct === null) return;
     if (document.activeElement !== el.volSlider) {
       el.volSlider.value = pct;
     }
     el.volPct.textContent = `${pct}%`;
-    el.volIcon.textContent = volIconFor(pct, state.muted);
-  } catch {}
+    el.volIcon.textContent = volIconFor(pct, muted);
+    // Pin into snapshot so the next 1s render() tick reads the same
+    // value instead of pulling a pre-show audio reading and overwriting
+    // the slider mid-frame.
+    if (!lastSnapshot) lastSnapshot = {};
+    lastSnapshot.audio = {
+      ...(lastSnapshot.audio || {}),
+      volume_percent: pct,
+      muted,
+      has_device: hasDevice || (lastSnapshot.audio && lastSnapshot.audio.has_device),
+    };
+  } catch (err) {
+    invoke('dbg_log', { message: `hud seed volume FAILED: ${err}` }).catch(() => {});
+  }
 }
 
 async function init() {
