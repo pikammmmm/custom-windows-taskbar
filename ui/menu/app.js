@@ -113,7 +113,19 @@ function renderRow({ label, action, args, danger, windowRow }) {
   row.appendChild(lab);
   row.addEventListener('click', async () => {
     if (action) {
-      try { await invoke(action, args || {}); } catch {}
+      // Log every menu action so we have a trace when something silently
+      // fails — the catch{} below otherwise swallows the error and the
+      // user just sees "nothing happened" with no breadcrumb.
+      invoke('dbg_log', {
+        message: `menu click action=${action} args=${JSON.stringify(args || {})}`,
+      }).catch(() => {});
+      try {
+        await invoke(action, args || {});
+      } catch (err) {
+        invoke('dbg_log', {
+          message: `menu click action=${action} FAILED: ${err}`,
+        }).catch(() => {});
+      }
     }
     await invoke('hide_menu').catch(() => {});
   });

@@ -1,6 +1,6 @@
 [package]
 name = "glassbar"
-version = "0.1.21"
+version = "0.1.22"
 edition = "2021"
 # Explicit default-run so `cargo build` / `cargo tauri build` pick
 # glassbar.exe as the main binary even with the second `uninstall`
