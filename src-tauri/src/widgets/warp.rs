@@ -30,6 +30,25 @@ pub struct WarpState {
     pub connected: bool,
 }
 
+/// Process-wide singleton probe — created by widget_state on startup
+/// and looked up by warp_toggle so refresh_now() can fire without
+/// needing to thread the Probe handle through Tauri's State manager.
+fn singleton() -> &'static std::sync::OnceLock<Probe> {
+    static SLOT: std::sync::OnceLock<Probe> = std::sync::OnceLock::new();
+    &SLOT
+}
+
+pub fn install_singleton(p: Probe) {
+    let _ = singleton().set(p);
+}
+
+pub fn refresh_global() {
+    if let Some(p) = singleton().get() {
+        p.refresh_now();
+    }
+}
+
+#[derive(Clone)]
 pub struct Probe {
     state: Arc<AtomicU8>,
 }
@@ -56,6 +75,16 @@ impl Probe {
             ST_DISCONNECTED => WarpState { installed: true,  connected: false },
             _ => WarpState { installed: false, connected: false },
         }
+    }
+
+    /// Force an immediate status re-read and update the cached value.
+    /// Called from the toggle path so the HUD sees the new state right
+    /// away instead of waiting up to 5s for the next scheduled poll —
+    /// without this the user clicked, snapshot still reported the OLD
+    /// state, the next click sent the same command again, and it
+    /// looked like nothing was happening.
+    pub fn refresh_now(&self) {
+        self.state.store(read_once(), Ordering::Relaxed);
     }
 }
 

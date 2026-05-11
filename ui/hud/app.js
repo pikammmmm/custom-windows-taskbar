@@ -495,21 +495,44 @@ document.querySelectorAll('[data-power-action]').forEach((btn) => {
 });
 
 // WARP button: left-click toggles connection, right-click opens the app.
-// Toggle is driven by the most recent snapshot rather than a re-poll so
-// the user gets instant feedback even if warp-cli takes a moment.
+// Click is optimistic — we flip the local snapshot immediately so the
+// button visually changes state without waiting for the next probe
+// tick. Backend's warp_toggle then fires a warp:changed event after
+// running the CLI so the truth catches up within ~400ms.
 el.warpBtn.addEventListener('click', async () => {
-  const connected = lastSnapshot?.warp?.connected ?? false;
+  const wasConnected = lastSnapshot?.warp?.connected ?? false;
+  const target = !wasConnected;
+  // Optimistic flip so the button state visibly changes on every click,
+  // not just after the next snapshot lands. The 5s polling lag was
+  // making rapid clicks look like no-ops because lastSnapshot.warp
+  // stayed at the pre-toggle value across multiple clicks.
+  if (lastSnapshot && lastSnapshot.warp) {
+    lastSnapshot.warp = { ...lastSnapshot.warp, connected: target };
+    render();
+  }
   try {
-    await invoke('warp_toggle', { connect: !connected });
-    showToast(connected ? 'Disconnecting WARP…' : 'Connecting WARP…');
+    await invoke('warp_toggle', { connect: target });
+    showToast(target ? 'Connecting WARP…' : 'Disconnecting WARP…');
   } catch (err) {
-    // Surface the failure — silently swallowing was the v0.1.13 'WARP
-    // button does nothing' symptom. The Rust toggle now also falls back
-    // to opening the WARP GUI when the CLI is missing, but that path
-    // still returns an Err so we land here either way.
     const msg = String(err || 'WARP toggle failed');
+    // Optimistic flip was wrong — revert so the button reflects reality.
+    if (lastSnapshot && lastSnapshot.warp) {
+      lastSnapshot.warp = { ...lastSnapshot.warp, connected: wasConnected };
+      render();
+    }
     showToast(msg, 'bad');
     invoke('dbg_log', { message: `warp click error: ${msg}` }).catch(() => {});
+  }
+});
+
+// warp:changed fires from Rust right after warp_toggle's CLI call so
+// dock/HUD don't have to wait the full 5s probe interval to see the new
+// state. Snapshot's next tick (400ms later) will carry the authoritative
+// status — this event is just a "look alive" nudge.
+listen('warp:changed', (e) => {
+  if (lastSnapshot && lastSnapshot.warp) {
+    lastSnapshot.warp = { ...lastSnapshot.warp, connected: !!e.payload };
+    render();
   }
 });
 el.warpBtn.addEventListener('contextmenu', (e) => {
@@ -553,19 +576,23 @@ el.volIcon.addEventListener('click', () => {
   invoke('set_mute', { muted: !lastSnapshot.audio.muted }).catch(() => {});
 });
 
-// Seed the slider + chip from the persisted volume so a HUD reopen shows
-// the user's last-set value immediately, without waiting for the first
-// snapshot tick (~400 ms) — that gap was visible as a brief flash to
-// the slider's HTML default (50%) on every show.
+// Seed the slider from the *current* system volume (not the last-persisted
+// glassbar value). Previously we used the persisted setting, but that
+// went stale whenever the user changed volume via media keys or the
+// Windows tray slider since the last glassbar interaction — the HUD
+// would reopen showing 35% while the system was actually at 60%, until
+// the next snapshot tick (~400ms) corrected it. Reading the live
+// endpoint is just as fast and always accurate.
 async function seedVolumeFromSettings() {
   try {
-    const seed = await invoke('get_settings_volume');
-    if (typeof seed !== 'number') return;
+    const state = await invoke('get_current_volume');
+    if (!state || !state.has_device) return;
+    const pct = state.volume_percent;
     if (document.activeElement !== el.volSlider) {
-      el.volSlider.value = seed;
+      el.volSlider.value = pct;
     }
-    el.volPct.textContent = `${seed}%`;
-    el.volIcon.textContent = volIconFor(seed, false);
+    el.volPct.textContent = `${pct}%`;
+    el.volIcon.textContent = volIconFor(pct, state.muted);
   } catch {}
 }
 
