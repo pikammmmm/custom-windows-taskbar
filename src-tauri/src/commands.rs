@@ -712,7 +712,17 @@ pub fn list_audio_devices() -> Result<Vec<audio::AudioDevice>, String> {
 /// the output side.
 #[tauri::command]
 pub fn list_audio_devices_for(flow: audio::Flow) -> Result<Vec<audio::AudioDevice>, String> {
-    audio::list_devices_for(flow)
+    let result = audio::list_devices_for(flow);
+    match &result {
+        Ok(list) => crate::glog!(
+            "list_audio_devices_for({:?}): {} devices [{}]",
+            flow,
+            list.len(),
+            list.iter().map(|d| d.name.as_str()).collect::<Vec<_>>().join(" | ")
+        ),
+        Err(e) => crate::glog!("list_audio_devices_for({:?}) FAILED: {e}", flow),
+    }
+    result
 }
 
 #[tauri::command]

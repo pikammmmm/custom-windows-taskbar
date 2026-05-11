@@ -145,9 +145,8 @@ function render() {
   // CPU temperature — tries ACPI thermal zones first, falls back to
   // LibreHardwareMonitor / OpenHardwareMonitor WMI namespaces if either
   // is running. Bar treats 30°C → 100°C as the visual range. When no
-  // source is available we point the user at LHM, which is the
-  // user-mode answer for desktops where Windows itself doesn't expose
-  // anything (most modern Ryzen / Intel desktops).
+  // source is available the chip becomes a clickable hint that opens
+  // the LHM download page directly (set up once in init below).
   const tempChip = document.getElementById('temp-chip');
   const t = lastSnapshot.thermal;
   if (t && typeof t.celsius === 'number') {
@@ -156,13 +155,17 @@ function render() {
     setBarLevel(el.tempBar, tempPct);
     tempChip.title = `CPU temperature · source: ${t.source || 'unknown'}`;
     tempChip.classList.remove('chip-nodata');
+    tempChip.style.cursor = 'default';
   } else {
-    el.tempVal.textContent = '—°';
+    el.tempVal.textContent = 'install';
     setBarLevel(el.tempBar, 0);
     tempChip.title =
-      'No CPU temperature source found. Install LibreHardwareMonitor and ' +
-      'leave it running — glassbar will pick up its readings automatically.';
+      'No CPU temperature source found on this machine.\n' +
+      'Click to open LibreHardwareMonitor — install it, enable ' +
+      '"Publish to WMI" in the Options menu, leave it running. ' +
+      'glassbar will pick up readings automatically.';
     tempChip.classList.add('chip-nodata');
+    tempChip.style.cursor = 'pointer';
   }
 
   // Cloudflare WARP — colour the button + tooltip from the latest probe.
@@ -651,6 +654,20 @@ async function init() {
   };
   await listen('hud:show-anim', () => window.__glassbarHudPlayShowAnim());
   await listen('hud:hide-anim', () => window.__glassbarHudPlayHideAnim());
+
+  // TEMP chip click → opens the LHM releases page when no source is
+  // available so the empty state is actionable instead of just being a
+  // tooltip the user has to hover to read. Once LHM is installed and
+  // publishing to WMI, glassbar's thermal probe picks it up
+  // automatically on the next 10s poll.
+  document.getElementById('temp-chip').addEventListener('click', () => {
+    const t = lastSnapshot?.thermal;
+    if (!t || typeof t.celsius !== 'number') {
+      invoke('launch_uri', {
+        uri: 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest',
+      }).catch(() => {});
+    }
+  });
 
   render();
   renderApps();
