@@ -655,17 +655,19 @@ async function init() {
   await listen('hud:show-anim', () => window.__glassbarHudPlayShowAnim());
   await listen('hud:hide-anim', () => window.__glassbarHudPlayHideAnim());
 
-  // TEMP chip click → opens the LHM releases page when no source is
-  // available so the empty state is actionable instead of just being a
-  // tooltip the user has to hover to read. Once LHM is installed and
-  // publishing to WMI, glassbar's thermal probe picks it up
-  // automatically on the next 10s poll.
+  // TEMP chip click → runs `winget install LibreHardwareMonitor` in a
+  // visible cmd window when no source is available. Previously we just
+  // opened the GitHub releases page, leaving install + WMI-publish as
+  // manual steps. Now winget handles the install (accept UAC), and the
+  // cmd window prints the one remaining manual step (toggle 'Publish to
+  // WMI' inside LHM). Glassbar's thermal probe picks it up within 10s.
   document.getElementById('temp-chip').addEventListener('click', () => {
     const t = lastSnapshot?.thermal;
     if (!t || typeof t.celsius !== 'number') {
-      invoke('launch_uri', {
-        uri: 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest',
-      }).catch(() => {});
+      invoke('install_lhm').catch((err) => {
+        showToast(`LHM install failed: ${err}`, 'bad');
+      });
+      showToast('Installing LibreHardwareMonitor… accept the UAC prompt');
     }
   });
 

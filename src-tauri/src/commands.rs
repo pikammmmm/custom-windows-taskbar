@@ -672,6 +672,38 @@ pub fn audio_diagnostics() -> audio::AudioState {
     audio::current()
 }
 
+/// Install LibreHardwareMonitor via winget. Spawns a visible cmd window
+/// so the user can see install progress and accept the UAC prompt.
+/// After install completes we open LHM so the user can enable
+/// "Publish to WMI" — glassbar's thermal probe picks it up on the next
+/// 10s poll. Single-click entry point from the TEMP chip's empty
+/// state replaces the previous "open browser to download" flow.
+#[tauri::command]
+pub fn install_lhm() -> Result<(), String> {
+    crate::glog!("install_lhm invoked");
+    // `cmd /c start cmd /k <command>` opens a NEW cmd window that stays
+    // open after install (`/k`) so the user can read any installer
+    // output. winget auto-accepts source agreements and shows its own
+    // progress bar inside the window. After install we tell the user
+    // the manual one-time step.
+    let script = "winget install --id LibreHardwareMonitor.LibreHardwareMonitor \
+                  --accept-source-agreements --accept-package-agreements && \
+                  echo. && echo === Next step === && \
+                  echo Open LibreHardwareMonitor, click Options menu, \
+                  enable 'Publish to WMI' and leave it running. && \
+                  echo glassbar will pick up CPU temps within 10 seconds. && \
+                  echo. && pause";
+    Command::new("cmd")
+        .args(["/c", "start", "cmd", "/k", script])
+        .hidden()
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| {
+            crate::glog!("install_lhm spawn failed: {e}");
+            format!("install_lhm spawn failed: {e}")
+        })
+}
+
 /// Switch the active keyboard layout to the layout identified by the
 /// raw HKL value (returned in the snapshot's `keyboard.installed`).
 /// Same effect as Win+Space, scoped to the foreground window.

@@ -45,6 +45,7 @@ const tray = {
   vol: document.getElementById('tray-vol'),
   volIcon: document.getElementById('tray-vol-icon'),
   volVal: document.getElementById('tray-vol-val'),
+  mic: document.getElementById('tray-mic'),
   lang: document.getElementById('tray-lang'),
   langVal: document.getElementById('tray-lang-val'),
   clock: document.getElementById('tray-clock'),
@@ -686,6 +687,10 @@ function updateTray(snap) {
     tray.volIcon.textContent = volIconFor(snap.audio.volume_percent, snap.audio.muted);
     tray.volVal.textContent = `${snap.audio.volume_percent}%`;
   }
+  // Mic chip only shows when there's at least one input device. We can't
+  // detect that from the snapshot (no capture-side state) so just keep
+  // it visible — list_audio_devices_for handles the empty case.
+  tray.mic.hidden = false;
   // Keyboard layout chip — only render when there's at least 2 layouts
   // installed (a single-layout system has no use for the chip and the
   // tray real-estate is precious).
@@ -802,59 +807,32 @@ tray.lang.addEventListener('click', async (e) => {
   }).catch(() => {});
 });
 
+// Output device menu — speakers / headphones. The volume slider acts on
+// the default OUTPUT, so this chip's menu is scoped to outputs only.
+// Input switching lives on the separate mic chip below so users can't
+// confuse the two sections by scrolling/misclicking in a combined list.
 tray.vol.addEventListener('click', async (e) => {
-  const items = [];
-
-  // Output (speakers/headphones) — same role the volume slider controls.
-  items.push({ kind: 'header', name: 'Output device' });
-  items.push({ kind: 'separator' });
+  const items = [{ kind: 'header', name: 'Output device' }, { kind: 'separator' }];
   try {
     const out = await invoke('list_audio_devices_for', { flow: 'output' });
     if (Array.isArray(out) && out.length > 0) {
       for (const d of out) {
         items.push({
           kind: 'item',
-          glyph: d.is_default ? '●' : '○',
-          label: d.name,
+          label: `${d.is_default ? '● ' : '  '}${d.name}`,
           action: 'set_default_audio_device',
           args: { id: d.id },
         });
       }
     } else {
-      items.push({ kind: 'item', glyph: '·', label: 'No output devices', action: '', args: {} });
+      items.push({ kind: 'item', label: 'No output devices', action: '', args: {} });
     }
   } catch {
-    items.push({ kind: 'item', glyph: '!', label: 'Failed to list outputs', action: '', args: {} });
+    items.push({ kind: 'item', label: 'Failed to list outputs', action: '', args: {} });
   }
-
-  // Input (microphones / line-in). Same set_default_audio_device handler —
-  // the IPolicyConfig API picks the device's flow from its ID, so one
-  // command does both directions.
-  items.push({ kind: 'separator' });
-  items.push({ kind: 'header', name: 'Input device' });
-  items.push({ kind: 'separator' });
-  try {
-    const ins = await invoke('list_audio_devices_for', { flow: 'input' });
-    if (Array.isArray(ins) && ins.length > 0) {
-      for (const d of ins) {
-        items.push({
-          kind: 'item',
-          glyph: d.is_default ? '●' : '○',
-          label: d.name,
-          action: 'set_default_audio_device',
-          args: { id: d.id },
-        });
-      }
-    } else {
-      items.push({ kind: 'item', glyph: '·', label: 'No input devices', action: '', args: {} });
-    }
-  } catch {
-    items.push({ kind: 'item', glyph: '!', label: 'Failed to list inputs', action: '', args: {} });
-  }
-
   items.push({ kind: 'separator' });
   items.push({
-    kind: 'item', glyph: '⚙', label: 'Sound settings',
+    kind: 'item', label: 'Sound settings…',
     action: 'launch_uri', args: { uri: 'ms-settings:sound' },
   });
   const dpr = window.devicePixelRatio || 1;
@@ -863,7 +841,46 @@ tray.vol.addEventListener('click', async (e) => {
       items,
       x: Math.round(e.screenX * dpr),
       y: Math.round(e.screenY * dpr),
-      width: 260,
+      width: 300,
+      height: estimateMenuHeight(items),
+    },
+  }).catch(() => {});
+});
+
+// Input device menu — dedicated chip so mic switching is one click away
+// and can't be confused with output switching. Same set_default_audio_device
+// command handles both directions; IPolicyConfig routes by device ID.
+tray.mic.addEventListener('click', async (e) => {
+  const items = [{ kind: 'header', name: 'Input device' }, { kind: 'separator' }];
+  try {
+    const ins = await invoke('list_audio_devices_for', { flow: 'input' });
+    if (Array.isArray(ins) && ins.length > 0) {
+      for (const d of ins) {
+        items.push({
+          kind: 'item',
+          label: `${d.is_default ? '● ' : '  '}${d.name}`,
+          action: 'set_default_audio_device',
+          args: { id: d.id },
+        });
+      }
+    } else {
+      items.push({ kind: 'item', label: 'No input devices', action: '', args: {} });
+    }
+  } catch {
+    items.push({ kind: 'item', label: 'Failed to list inputs', action: '', args: {} });
+  }
+  items.push({ kind: 'separator' });
+  items.push({
+    kind: 'item', label: 'Sound settings…',
+    action: 'launch_uri', args: { uri: 'ms-settings:sound' },
+  });
+  const dpr = window.devicePixelRatio || 1;
+  await invoke('show_menu', {
+    args: {
+      items,
+      x: Math.round(e.screenX * dpr),
+      y: Math.round(e.screenY * dpr),
+      width: 300,
       height: estimateMenuHeight(items),
     },
   }).catch(() => {});

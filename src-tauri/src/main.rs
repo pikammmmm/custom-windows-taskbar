@@ -166,6 +166,7 @@ fn main() {
             commands::get_settings_volume,
             commands::get_current_volume,
             commands::audio_diagnostics,
+            commands::install_lhm,
             commands::set_mute,
             commands::list_audio_devices,
             commands::list_audio_devices_for,
