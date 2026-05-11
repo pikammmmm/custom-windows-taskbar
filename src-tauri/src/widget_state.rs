@@ -24,6 +24,10 @@ pub fn spawn(app: AppHandle, tick: Duration) {
         let inet = internet::Probe::spawn();
         let wx = weather::Probe::spawn();
         let warp_probe = warp::Probe::spawn();
+        // Publish the probe so warp_toggle can force a status re-read
+        // immediately after sending a CLI command — without this the
+        // snapshot lagged ~5s and rapid clicks all read the stale state.
+        warp::install_singleton(warp_probe.clone());
         let thermal_probe = thermal::Probe::spawn();
         sysstats::prime();
         let mut prev_snapshot: Option<HudSnapshot> = None;

@@ -653,6 +653,15 @@ pub fn get_settings_volume() -> Option<u8> {
     config::load_settings().ok().and_then(|s| s.volume_percent)
 }
 
+/// Returns the *current* system volume, not the last-persisted value.
+/// HUD seeds the slider from this on reopen so the displayed % matches
+/// reality even if the user changed system volume via media keys /
+/// Windows tray slider since the last glassbar interaction.
+#[tauri::command]
+pub fn get_current_volume() -> audio::AudioState {
+    audio::current()
+}
+
 /// Dump every audio endpoint's reported scalar to debug.log. Called from
 /// the HUD when the user clicks a "diagnose volume" button — for now also
 /// invokable directly so we have a way to triage the recurring "HUD shows
@@ -708,12 +717,28 @@ pub fn list_audio_devices_for(flow: audio::Flow) -> Result<Vec<audio::AudioDevic
 
 #[tauri::command]
 pub fn set_default_audio_device(id: String) -> Result<(), String> {
-    audio::set_default_device(&id)
+    crate::glog!("set_default_audio_device: id={id}");
+    let result = audio::set_default_device(&id);
+    match &result {
+        Ok(()) => crate::glog!("set_default_audio_device: ok"),
+        Err(e) => crate::glog!("set_default_audio_device: FAIL {e}"),
+    }
+    result
 }
 
 #[tauri::command]
-pub fn warp_toggle(connect: bool) -> Result<(), String> {
-    warp::toggle(connect)
+pub fn warp_toggle(app: AppHandle, connect: bool) -> Result<(), String> {
+    let result = warp::toggle(connect);
+    // Force an immediate status re-read so the snapshot reflects the new
+    // state on the next ~400ms tick instead of waiting up to 5s for the
+    // next scheduled probe. The user perceives the button as
+    // "responsive" instead of "didn't do anything."
+    warp::refresh_global();
+    // Re-emit the audio-changed event as a generic "snapshot may have
+    // changed" nudge — same pattern set_volume uses to push instant UI
+    // updates. The dock and HUD just-re-render their tray chips.
+    let _ = app.emit("warp:changed", connect);
+    result
 }
 
 /// System power actions: lock / sleep / signout / restart / shutdown.
