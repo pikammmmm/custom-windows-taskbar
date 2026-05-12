@@ -672,29 +672,80 @@ pub fn audio_diagnostics() -> audio::AudioState {
     audio::current()
 }
 
-/// Install LibreHardwareMonitor via winget. Spawns a visible cmd window
-/// so the user can see install progress and accept the UAC prompt.
-/// After install completes we open LHM so the user can enable
-/// "Publish to WMI" — glassbar's thermal probe picks it up on the next
-/// 10s poll. Single-click entry point from the TEMP chip's empty
-/// state replaces the previous "open browser to download" flow.
+/// Install LibreHardwareMonitor via winget, then auto-launch it so the
+/// user can toggle WMI publishing. The previous build used
+/// `cmd /c start cmd /k winget ...`, but the user reported zero log
+/// activity from this — suggesting either the inner cmd window inherited
+/// our hidden-window flag and they never saw it, or it appeared but
+/// they closed it without doing the manual "Publish to WMI" step.
+///
+/// New approach: write a PowerShell script to %TEMP%, then launch
+/// `Start-Process powershell -Verb RunAs -File <script>` so the user
+/// gets a single UAC prompt covering both the winget install and the
+/// LHM launch. The PS window stays open with big colour-coded
+/// instructions for the one remaining manual step.
 #[tauri::command]
 pub fn install_lhm() -> Result<(), String> {
     crate::glog!("install_lhm invoked");
-    // `cmd /c start cmd /k <command>` opens a NEW cmd window that stays
-    // open after install (`/k`) so the user can read any installer
-    // output. winget auto-accepts source agreements and shows its own
-    // progress bar inside the window. After install we tell the user
-    // the manual one-time step.
-    let script = "winget install --id LibreHardwareMonitor.LibreHardwareMonitor \
-                  --accept-source-agreements --accept-package-agreements && \
-                  echo. && echo === Next step === && \
-                  echo Open LibreHardwareMonitor, click Options menu, \
-                  enable 'Publish to WMI' and leave it running. && \
-                  echo glassbar will pick up CPU temps within 10 seconds. && \
-                  echo. && pause";
-    Command::new("cmd")
-        .args(["/c", "start", "cmd", "/k", script])
+
+    let script = r#"$Host.UI.RawUI.WindowTitle = 'glassbar - installing CPU temperature provider'
+Write-Host ''
+Write-Host '=== Installing LibreHardwareMonitor ===' -ForegroundColor Cyan
+Write-Host 'Free, open-source. Standard tool for reading CPU/GPU temps on Windows.'
+Write-Host ''
+winget install --id LibreHardwareMonitor.LibreHardwareMonitor --accept-source-agreements --accept-package-agreements
+Write-Host ''
+Write-Host '=== Locating LHM ===' -ForegroundColor Cyan
+$candidates = @(
+    "$env:ProgramFiles\LibreHardwareMonitor\LibreHardwareMonitor.exe",
+    "$env:LocalAppData\Microsoft\WinGet\Packages\LibreHardwareMonitor.LibreHardwareMonitor_*\LibreHardwareMonitor.exe"
+)
+$lhm = $null
+foreach ($pat in $candidates) {
+    $found = Get-ChildItem -Path $pat -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $lhm = $found.FullName; break }
+}
+if (-not $lhm) {
+    Write-Host 'Could not locate LHM after install. Find it in Start menu and run it manually.' -ForegroundColor Yellow
+    Read-Host 'Press Enter to close'
+    exit
+}
+Write-Host "Found: $lhm" -ForegroundColor Green
+Write-Host ''
+Write-Host '=== Starting LibreHardwareMonitor ===' -ForegroundColor Cyan
+Start-Process $lhm
+Start-Sleep -Seconds 2
+Write-Host ''
+Write-Host '============================================================' -ForegroundColor Yellow
+Write-Host ' ONE MORE STEP - do this in the LHM window that just opened ' -ForegroundColor Yellow
+Write-Host '============================================================' -ForegroundColor Yellow
+Write-Host ''
+Write-Host '   1. Click the OPTIONS menu (top bar)' -ForegroundColor White
+Write-Host '   2. Click PUBLISH TO WMI' -ForegroundColor White
+Write-Host '   3. Minimize LHM (leave it running in background)' -ForegroundColor White
+Write-Host ''
+Write-Host 'glassbar will show CPU temp within 10 seconds.' -ForegroundColor Green
+Write-Host ''
+Read-Host 'Press Enter to close this window'
+"#;
+
+    let script_path = std::env::temp_dir().join("glassbar_install_lhm.ps1");
+    std::fs::write(&script_path, script)
+        .map_err(|e| {
+            crate::glog!("install_lhm: write script failed: {e}");
+            format!("write script failed: {e}")
+        })?;
+    crate::glog!("install_lhm: script written to {}", script_path.display());
+
+    // Outer powershell.exe (non-elevated) → Start-Process powershell.exe -Verb RunAs.
+    // The single UAC prompt covers winget install + LHM launch in one go.
+    // -NoExit on the inner PS so the instructions window stays open.
+    let inner_cmd = format!(
+        "Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File','{}'",
+        script_path.display()
+    );
+    Command::new("powershell")
+        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &inner_cmd])
         .hidden()
         .spawn()
         .map(|_| ())

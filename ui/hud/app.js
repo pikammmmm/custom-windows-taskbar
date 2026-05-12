@@ -655,19 +655,23 @@ async function init() {
   await listen('hud:show-anim', () => window.__glassbarHudPlayShowAnim());
   await listen('hud:hide-anim', () => window.__glassbarHudPlayHideAnim());
 
-  // TEMP chip click → runs `winget install LibreHardwareMonitor` in a
-  // visible cmd window when no source is available. Previously we just
-  // opened the GitHub releases page, leaving install + WMI-publish as
-  // manual steps. Now winget handles the install (accept UAC), and the
-  // cmd window prints the one remaining manual step (toggle 'Publish to
-  // WMI' inside LHM). Glassbar's thermal probe picks it up within 10s.
-  document.getElementById('temp-chip').addEventListener('click', () => {
+  // TEMP chip click → kicks off LHM install via elevated PowerShell.
+  // The diagnostic dbg_log lets us confirm in debug.log that the click
+  // actually fired — last build saw zero install_lhm activity and we
+  // couldn't tell whether JS swallowed the event or the user never
+  // clicked.
+  document.getElementById('temp-chip').addEventListener('click', async () => {
     const t = lastSnapshot?.thermal;
-    if (!t || typeof t.celsius !== 'number') {
-      invoke('install_lhm').catch((err) => {
-        showToast(`LHM install failed: ${err}`, 'bad');
-      });
-      showToast('Installing LibreHardwareMonitor… accept the UAC prompt');
+    invoke('dbg_log', {
+      message: `hud temp click thermalCelsius=${t?.celsius ?? 'null'} source=${t?.source ?? 'null'}`,
+    }).catch(() => {});
+    if (t && typeof t.celsius === 'number') return;
+    showToast('Installing LibreHardwareMonitor… accept the UAC prompt');
+    try {
+      await invoke('install_lhm');
+    } catch (err) {
+      showToast(`LHM install failed: ${err}`, 'bad');
+      invoke('dbg_log', { message: `install_lhm JS error: ${err}` }).catch(() => {});
     }
   });
 
