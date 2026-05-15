@@ -5,8 +5,11 @@
   --glass-bg: rgba(12, 14, 20, 0.18);
   --glass-bg-top: rgba(28, 32, 44, 0.22);
   --glass-bg-bot: rgba(8, 10, 14, 0.18);
-  --glass-border: rgba(255, 255, 255, 0.16);
-  --glass-border-top: rgba(255, 255, 255, 0.28);
+  /* Border is barely-there — was 0.16/0.28 which printed a clearly visible
+     bright ring around the glass card and read as a second visible "layer"
+     when combined with the SetWindowRgn clip's antialiasing. */
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-border-top: rgba(255, 255, 255, 0.10);
 }
 
 html, body {

@@ -37,7 +37,10 @@ body.drop-active .glass-card {
   width: 44px;
   height: 44px;
   border-radius: 11px;
-  background: rgba(255,255,255,0.04);
+  /* No resting background — icons sit directly on the dock's glass surface
+     so the dock reads as ONE rounded card, not "icons inside boxes inside a
+     bigger box". Hover still fills in for affordance. */
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -114,7 +117,7 @@ body.drop-active .glass-card {
   filter: grayscale(35%);
 }
 .dock-icon.recent {
-  background: rgba(255, 255, 255, 0.025);
+  background: transparent;
 }
 .dock-icon.recent:hover img,
 .dock-icon.recent:hover .icon-fallback {
@@ -304,14 +307,16 @@ body.drop-active .glass-card {
 /* ────────────────────────────────────────────────────────────────────────
    Tray chips (right-side widgets) — clock, volume, battery, network
    ──────────────────────────────────────────────────────────────────────── */
-.tray { display: flex; align-items: center; gap: 4px; }
+.tray { display: flex; align-items: center; gap: 2px; }
 .tray-chip {
   display: flex;
   align-items: center;
   gap: 5px;
   padding: 6px 9px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.05);
+  /* Flat — chips read as inline text/glyphs sitting on the dock's glass,
+     not as nested rounded surfaces. Hover fills in for affordance. */
+  background: transparent;
   font-size: 12px;
   color: #cfd6e4;
   cursor: pointer;
@@ -321,7 +326,7 @@ body.drop-active .glass-card {
 }
 .tray-chip:hover {
   background: rgba(255,255,255,0.14);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 .tray-chip .tray-icon { font-size: 13px; line-height: 1; }
 .tray-chip .tray-val {
@@ -349,11 +354,11 @@ body.drop-active .glass-card {
   gap: 2px;
   padding: 3px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
   margin-right: 4px;
   transition: background 140ms ease;
 }
-.tray-media:hover { background: rgba(255, 255, 255, 0.10); }
+.tray-media:hover { background: rgba(255, 255, 255, 0.08); }
 .tray-media[hidden] { display: none; }
 
 .tray-media-prev,
