@@ -34,7 +34,8 @@ html, body {
   border: 1px solid var(--glass-border);
   border-top-color: var(--glass-border-top);
   box-sizing: border-box;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  /* No box-shadow — the layered window is region-clipped, so any drop shadow
+     would render outside the clip and never reach the screen (or, with
+     backdrop-filter active, paint a dark halo *inside* the rounded frame
+     that reads as a second visible "layer" around the content). */
 }
