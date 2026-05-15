@@ -87,14 +87,29 @@ impl Probe {
 }
 
 /// Try every thermal source we know about, in priority order:
-///   1. ACPI thermal zone (kernel-mediated; works on most laptops).
-///   2. LibreHardwareMonitor's WMI bridge (if user has LHM running).
-///   3. OpenHardwareMonitor's WMI bridge (legacy; still common).
+///   1. LibreHardwareMonitor's HTTP JSON endpoint (Options ▸ Remote Web
+///      Server ▸ Run, default port 8085) — the modern way; v0.9 dropped
+///      the legacy WMI provider entirely.
+///   2. ACPI thermal zone (kernel-mediated; works on most laptops, no
+///      third-party install).
+///   3. LibreHardwareMonitor's *legacy* WMI bridge (root/Hardware or
+///      root/LibreHardwareMonitor) — kept as a fallback for v0.8.x.
+///   4. OpenHardwareMonitor's WMI bridge (legacy; still common).
 /// Returns the first successful reading along with a label that the
-/// frontend uses for the HUD tooltip. None when nothing works — typical
-/// on bare-metal desktops without any third-party sensor service.
+/// frontend uses for the HUD tooltip. None when nothing works.
 fn read_once() -> Option<(i32, &'static str)> {
-    // 1. ACPI thermal zones, tenths-of-Kelvin.
+    // 1. LibreHardwareMonitor HTTP JSON. The endpoint walks a tree of
+    // sensor groups; we look for a leaf whose Text starts with a CPU
+    // package indicator and whose Value parses as °C. AMD reports as
+    // "Core (Tctl/Tdie)", Intel as "CPU Package", desktop motherboards
+    // expose "CPU" under the chipset's super-IO. Try in priority order.
+    if let Some(c) = read_lhm_http() {
+        if (-20.0..=120.0).contains(&c) {
+            return Some((c.round() as i32, "LibreHardwareMonitor"));
+        }
+    }
+
+    // 2. ACPI thermal zones, tenths-of-Kelvin.
     let acpi = run_ps(
         "(Get-CimInstance -Namespace 'root/wmi' -ClassName 'MSAcpi_ThermalZoneTemperature' \
          -ErrorAction SilentlyContinue | Select-Object -First 1).CurrentTemperature",
@@ -108,22 +123,25 @@ fn read_once() -> Option<(i32, &'static str)> {
         }
     }
 
-    // 2. LibreHardwareMonitor — exposes Sensor instances under
-    // root\LibreHardwareMonitor when the LHM service is running.
-    // Filter for SensorType='Temperature' and Name like '*CPU*' to get
-    // the package temp; falls back to the highest reading found.
-    let lhm = run_ps(
-        "$s = Get-CimInstance -Namespace 'root/LibreHardwareMonitor' -ClassName 'Sensor' \
-         -ErrorAction SilentlyContinue | Where-Object { $_.SensorType -eq 'Temperature' }; \
-         if ($s) { ($s | Where-Object { $_.Name -match 'CPU' } | Select-Object -First 1 -ExpandProperty Value) }",
-    );
-    if let Some(c) = lhm.and_then(|s| s.parse::<f32>().ok()) {
-        if (-20.0..=120.0).contains(&c) {
-            return Some((c.round() as i32, "LibreHardwareMonitor"));
+    // 3. Legacy LHM WMI (v0.8.x and earlier) — tries both namespace names
+    // since the rename to root/Hardware happened in 0.9.
+    for ns in &["root/Hardware", "root/LibreHardwareMonitor"] {
+        let script = format!(
+            "$s = Get-CimInstance -Namespace '{ns}' -ClassName 'Sensor' \
+             -ErrorAction SilentlyContinue | Where-Object {{ $_.SensorType -eq 'Temperature' }}; \
+             if ($s) {{ \
+                 $cpu = $s | Where-Object {{ $_.Name -match 'CPU|Tdie|Tctl|Package' }} | Select-Object -First 1 -ExpandProperty Value; \
+                 if ($cpu) {{ $cpu }} else {{ $s | Select-Object -First 1 -ExpandProperty Value }} \
+             }}"
+        );
+        if let Some(c) = run_ps(&script).and_then(|s| s.parse::<f32>().ok()) {
+            if (-20.0..=120.0).contains(&c) {
+                return Some((c.round() as i32, "LibreHardwareMonitor"));
+            }
         }
     }
 
-    // 3. OpenHardwareMonitor — same shape, different namespace.
+    // 4. OpenHardwareMonitor — same shape, different namespace.
     let ohm = run_ps(
         "$s = Get-CimInstance -Namespace 'root/OpenHardwareMonitor' -ClassName 'Sensor' \
          -ErrorAction SilentlyContinue | Where-Object { $_.SensorType -eq 'Temperature' }; \
@@ -135,6 +153,56 @@ fn read_once() -> Option<(i32, &'static str)> {
         }
     }
     None
+}
+
+/// Hit LHM's Remote Web Server JSON endpoint and pick the best CPU temp.
+/// Returns the °C reading or None when the server is offline / no CPU
+/// temp sensor exposed.
+fn read_lhm_http() -> Option<f32> {
+    let body = ureq::get("http://localhost:8085/data.json")
+        .timeout(Duration::from_secs(3))
+        .call()
+        .ok()?
+        .into_string()
+        .ok()?;
+    let root: serde_json::Value = serde_json::from_str(&body).ok()?;
+    // Walk the tree; collect every (text, value) leaf whose value parses
+    // as a celsius reading. Then prefer in this order:
+    //   * "Core (Tctl/Tdie)" / "Tctl" — AMD package
+    //   * "CPU Package" — Intel package
+    //   * "CPU" exact — motherboard super-IO CPU sensor
+    //   * any sensor whose name starts with "CPU"
+    let mut hits: Vec<(String, f32)> = Vec::new();
+    walk_lhm(&root, &mut hits);
+    let pick = |needle: &str, exact: bool| -> Option<f32> {
+        hits.iter()
+            .find(|(name, _)| if exact { name == needle } else { name.contains(needle) })
+            .map(|(_, v)| *v)
+    };
+    pick("Core (Tctl/Tdie)", false)
+        .or_else(|| pick("Tctl", false))
+        .or_else(|| pick("CPU Package", false))
+        .or_else(|| pick("CPU", true))
+        .or_else(|| hits.iter().find(|(n, _)| n.starts_with("CPU")).map(|(_, v)| *v))
+}
+
+/// Recursive tree walk — accumulates leaves where Value matches "<num> °C".
+fn walk_lhm(node: &serde_json::Value, out: &mut Vec<(String, f32)>) {
+    if let (Some(text), Some(value)) = (node.get("Text").and_then(|v| v.as_str()),
+                                        node.get("Value").and_then(|v| v.as_str())) {
+        if let Some(stripped) = value.strip_suffix(" °C") {
+            // LHM uses comma as decimal separator in some locales.
+            let normalized = stripped.replace(',', ".");
+            if let Ok(c) = normalized.trim().parse::<f32>() {
+                out.push((text.to_string(), c));
+            }
+        }
+    }
+    if let Some(children) = node.get("Children").and_then(|c| c.as_array()) {
+        for child in children {
+            walk_lhm(child, out);
+        }
+    }
 }
 
 fn run_ps(script: &str) -> Option<String> {
