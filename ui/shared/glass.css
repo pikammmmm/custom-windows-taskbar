@@ -12,6 +12,13 @@
   --glass-border-top: rgba(255, 255, 255, 0.10);
 }
 
+/* Chromium reserves an opaque corner block where vertical + horizontal
+   scrollbars would meet, even when only one direction is active. On any
+   rounded glass surface it leaks out as a tiny dark square near the
+   bottom-right inside the rounded clip. Kill it everywhere up front. */
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-resizer { display: none; }
+
 html, body {
   margin: 0;
   padding: 0;
