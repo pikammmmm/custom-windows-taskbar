@@ -2,7 +2,8 @@ use windows::Win32::Foundation::{BOOL, COLORREF, HWND};
 use windows::Win32::Graphics::Dwm::{
     DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWINDOWATTRIBUTE,
     DWMWA_NCRENDERING_POLICY, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE,
-    DWMWA_WINDOW_CORNER_PREFERENCE, DWMNCRENDERINGPOLICY, DWMWCP_ROUND, DWM_SYSTEMBACKDROP_TYPE,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMNCRENDERINGPOLICY, DWMWCP_DONOTROUND,
+    DWM_SYSTEMBACKDROP_TYPE,
 };
 
 /// Win11-only: the magic value that tells DWM to suppress the focus-border
@@ -22,8 +23,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const BACKDROP_MICA: i32 = 2;
 pub const BACKDROP_ACRYLIC: i32 = 3; // DWMSBT_TRANSIENTWINDOW — true see-through glass on Win11
 
+/// Tell DWM **not** to round our corners — we own the rounding via
+/// `apply_rounded_region` at the exact 22px CSS radius. Without this, DWM
+/// applies its own ~8px round to the acrylic backdrop *underneath* our
+/// 22px region clip, producing two visible curves at every corner: a
+/// tight inner one from DWM's small round, a wider outer one from the
+/// region. Setting DONOTROUND collapses the two into a single edge.
 pub fn round_corners(hwnd: isize) {
-    let pref = DWMWCP_ROUND;
+    let pref = DWMWCP_DONOTROUND;
     unsafe {
         let _ = DwmSetWindowAttribute(
             HWND(hwnd as *mut _),
@@ -43,7 +50,12 @@ pub fn round_corners(hwnd: isize) {
 /// and re-call if you ever resize it (we don't, so once is enough).
 pub fn apply_rounded_region(hwnd: isize, width: i32, height: i32, radius: i32) {
     unsafe {
-        let rgn = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        // GDI region right/bottom are exclusive — passing (width, height) gives
+        // a region that covers exactly `width × height` pixels. The previous
+        // `width + 1` extended the right/bottom-corner curves 1px past the
+        // window edge, making those corners visibly flatter than the
+        // (correctly-sized) left ones.
+        let rgn = CreateRoundRectRgn(0, 0, width, height, radius * 2, radius * 2);
         if !rgn.0.is_null() {
             // SetWindowRgn takes ownership of the region — don't free it.
             let _ = SetWindowRgn(HWND(hwnd as *mut _), rgn, windows::Win32::Foundation::TRUE);
