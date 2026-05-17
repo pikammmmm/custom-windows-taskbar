@@ -1,4 +1,4 @@
-use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash};
+use crate::{app_actions, win32, pinned, icons, config, autostart, shell_taskbar, import_pinned, stash, voice};
 use crate::win32::CommandHidden;
 use crate::widgets::{audio, clipboard as clip, files, keyboard, media, start_menu, warp, weather};
 use std::process::Command;
@@ -1430,4 +1430,9 @@ pub fn clipboard_use_entry(app: AppHandle, id: u64) -> Result<(), String> {
 #[tauri::command]
 pub fn clipboard_clear() {
     clip::clear();
+}
+
+#[tauri::command]
+pub fn voice_toggle(controller: State<'_, voice::VoiceController>) -> Result<(), String> {
+    controller.toggle().map_err(|e| e.to_string())
 }

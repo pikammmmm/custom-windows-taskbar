@@ -23,3 +23,26 @@ pub fn is_enabled() -> bool {
     let Ok(run) = RegKey::predef(HKEY_CURRENT_USER).open_subkey(RUN_KEY) else { return false; };
     run.get_value::<String, _>(VALUE).is_ok()
 }
+
+/// Delete any leftover `Voice PTT.lnk` from the user's Startup folder.
+/// Old voice-ptt installs added themselves to autostart directly; now that
+/// glassbar owns voice-ptt as a child process, that shortcut would launch
+/// a second, hotkey-driven instance alongside glassbar's managed one.
+/// Idempotent: no-op if the shortcut isn't there.
+pub fn cleanup_legacy_voice_ptt_autostart() {
+    let Some(appdata) = std::env::var_os("APPDATA") else { return };
+    let lnk = std::path::PathBuf::from(appdata)
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs")
+        .join("Startup")
+        .join("Voice PTT.lnk");
+    if lnk.exists() {
+        if let Err(e) = std::fs::remove_file(&lnk) {
+            tracing::warn!("failed to remove legacy Voice PTT.lnk: {e}");
+        } else {
+            tracing::info!("removed legacy Voice PTT.lnk autostart");
+        }
+    }
+}

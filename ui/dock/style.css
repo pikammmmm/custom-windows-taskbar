@@ -24,7 +24,14 @@ body.drop-active .glass-card {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
-  overflow-y: visible;
+  /* Per CSS Overflow spec, `overflow-x: auto` silently forces
+     `overflow-y: visible` to compute to `auto`, which was clipping the
+     hover lift (translateY(-5px) scale(1.18)) and the tooltip (which sits
+     above the icon with `bottom: calc(100% + 10px)`) at the top edge.
+     `overflow-y: clip` plus a generous clip-margin keeps horizontal
+     scrolling intact while letting hover/tooltip escape upward. */
+  overflow-y: clip;
+  overflow-clip-margin: 80px;
   scrollbar-width: none;
   padding: 0 4px;
 }
@@ -345,6 +352,33 @@ body.drop-active .glass-card {
 .tray-chip.net-chip.offline .tray-icon { color: #f88; }
 .tray-chip.batt-chip.charging .tray-icon { color: #6ee7b7; }
 .tray-chip.batt-chip.low .tray-icon { color: #f88; }
+
+/* Voice dictation toggle. <button> reset so it matches the chip surface,
+   then state-driven colouring via [data-state]. */
+.tray-chip.voice-chip {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  color: #cfd6e4;
+}
+.tray-chip.voice-chip[data-state="loading"] {
+  opacity: 0.45;
+  cursor: progress;
+}
+.tray-chip.voice-chip[data-state="recording"] .tray-icon {
+  color: #ff5b6e;
+  animation: voice-pulse 1s ease-in-out infinite;
+}
+.tray-chip.voice-chip[data-state="transcribing"] .tray-icon {
+  color: #ffd479;
+}
+.tray-chip.voice-chip[data-state="error"] .tray-icon {
+  color: #ff5b6e;
+}
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1;    transform: scale(1);    }
+  50%      { opacity: 0.55; transform: scale(0.85); }
+}
 
 /* Media chip — album art with prev/play/next mini buttons hugging it.
    Smooth hover/press transitions for that tactile feel. */

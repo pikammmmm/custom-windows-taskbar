@@ -25,6 +25,10 @@ pub fn settings_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("settings.json"))
 }
 
+pub fn voice_config_path() -> Result<PathBuf> {
+    Ok(data_dir()?.join("voice.json"))
+}
+
 /// Set of taskbar-pin paths we've already imported into the dock — used so
 /// the live sync only adds *newly* pinned items. Without this, unpinning
 /// from the dock gets reverted on the next sync because the entry still
@@ -81,4 +85,47 @@ pub fn save_settings(s: &Settings) -> Result<()> {
     if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
     std::fs::write(&path, serde_json::to_string_pretty(s)?)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceCfg {
+    /// Master toggle. When false, no mic button shows in the dock and no
+    /// voice-ptt child is spawned.
+    #[serde(default = "default_voice_enabled")]
+    pub enabled: bool,
+    /// Path to the Python interpreter that has faster-whisper installed.
+    /// Prefer the absolute pythonw.exe path so the child runs windowless.
+    #[serde(default)]
+    pub python_exe: PathBuf,
+    /// Path to the voice-ptt entry script (voice_ptt.py).
+    #[serde(default)]
+    pub script: PathBuf,
+}
+
+fn default_voice_enabled() -> bool { true }
+
+impl Default for VoiceCfg {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            python_exe: PathBuf::new(),
+            script: PathBuf::new(),
+        }
+    }
+}
+
+/// Load voice config from %APPDATA%\glassbar\voice.json. If the file is
+/// missing, write a stub the user can fill in by hand and return defaults.
+/// Defaults have empty paths so the controller decides not to spawn until
+/// the user populates them.
+pub fn load_voice() -> Result<VoiceCfg> {
+    let path = voice_config_path()?;
+    if !path.exists() {
+        let stub = VoiceCfg::default();
+        if let Some(p) = path.parent() { std::fs::create_dir_all(p)?; }
+        let _ = std::fs::write(&path, serde_json::to_string_pretty(&stub)?);
+        return Ok(stub);
+    }
+    let s = std::fs::read_to_string(&path)?;
+    Ok(serde_json::from_str(&s).unwrap_or_default())
 }

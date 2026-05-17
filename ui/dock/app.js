@@ -58,6 +58,28 @@ const tray = {
   mediaArt: document.getElementById('tray-media-art'),
   mediaNext: document.getElementById('tray-media-next'),
 };
+const voiceMic = document.getElementById('voice-mic');
+if (voiceMic) {
+  voiceMic.addEventListener('click', () => {
+    // Don't let a fast double-click stack two toggles before the first
+    // round-trip has updated data-state.
+    const s = voiceMic.dataset.state;
+    if (s === 'loading' || s === 'transcribing') return;
+    invoke('voice_toggle').catch((err) => console.error('voice_toggle failed', err));
+  });
+  listen('voice:state', (e) => {
+    voiceMic.dataset.state = String(e.payload || 'idle');
+  });
+  listen('voice:error', (e) => {
+    console.warn('voice error:', e.payload);
+    // Brief red flash, then back to idle (the Python side also emits a
+    // matching state event, so this is just a hint while that lands).
+    voiceMic.dataset.state = 'error';
+    setTimeout(() => {
+      if (voiceMic.dataset.state === 'error') voiceMic.dataset.state = 'idle';
+    }, 1500);
+  });
+}
 // Cache the latest installed-layout list so the click handler doesn't
 // have to wait for the next snapshot tick to know what menu to show.
 let lastKeyboardState = null;
