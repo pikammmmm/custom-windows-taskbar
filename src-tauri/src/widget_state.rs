@@ -29,6 +29,12 @@ pub fn spawn(app: AppHandle, tick: Duration) {
         // snapshot lagged ~5s and rapid clicks all read the stale state.
         warp::install_singleton(warp_probe.clone());
         let thermal_probe = thermal::Probe::spawn();
+        // SMTC `.get()` calls can wedge forever when a dead media session
+        // entry won't clean up (the original symptom: CPU/RAM/TEMP froze
+        // after ~5 ticks because the snapshot loop blocked inside
+        // media::current()). Probe runs in its own thread with a hard
+        // per-iteration timeout; we read its cache here.
+        media::spawn_probe();
         sysstats::prime();
         let mut prev_snapshot: Option<HudSnapshot> = None;
         let mut last_emit = Instant::now() - Duration::from_secs(1);

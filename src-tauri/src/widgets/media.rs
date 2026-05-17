@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use serde::Serialize;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession,
@@ -35,7 +35,67 @@ pub struct MediaState {
     pub source_app: Option<String>,
 }
 
+/// Snapshot loop calls this — returns the latest probed value instantly
+/// (no blocking SMTC calls on the hot path). Spawn the probe once at
+/// startup; `current()` reads the shared cache. Errors are folded into
+/// `MediaState::default()` so the caller doesn't need to handle them.
 pub fn current() -> Result<MediaState> {
+    Ok(cache().lock().unwrap().clone())
+}
+
+fn cache() -> &'static Mutex<MediaState> {
+    static SLOT: OnceLock<Mutex<MediaState>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(MediaState::default()))
+}
+
+/// How often the probe re-reads SMTC. 1s is fast enough that
+/// play/pause / track changes feel immediate; slow enough that
+/// thumbnail re-extraction (the expensive part) is amortised.
+const PROBE_INTERVAL: Duration = Duration::from_millis(1000);
+
+/// Hard timeout per SMTC probe — if `read_once` doesn't return in this
+/// time, the probe thread carries on with the next tick rather than
+/// blocking forever. Without this, a stuck SMTC async op (a dead
+/// background media session whose entry never cleaned up — common after
+/// Spotify / browser crashes) freezes the probe loop, and the cached
+/// MediaState goes stale.
+const PROBE_TIMEOUT: Duration = Duration::from_millis(750);
+
+/// Background probe — spawns its own thread and a per-tick worker
+/// thread. The worker does the blocking SMTC `.get()` calls; the
+/// supervisor times it out and abandons the result on timeout. The
+/// SMTC operations remain in flight in the abandoned worker, but
+/// they're no longer blocking the snapshot loop.
+pub fn spawn_probe() {
+    std::thread::spawn(|| loop {
+        let result = Arc::new(Mutex::new(None::<MediaState>));
+        let r = result.clone();
+        let worker = std::thread::spawn(move || {
+            let v = read_once().unwrap_or_default();
+            *r.lock().unwrap() = Some(v);
+        });
+        let start = Instant::now();
+        // Poll the worker briefly until either it finishes or we exceed
+        // the timeout. std::thread::JoinHandle doesn't expose a
+        // timed-join, so we sample is_finished().
+        loop {
+            if worker.is_finished() { break; }
+            if start.elapsed() > PROBE_TIMEOUT {
+                crate::glog!("media probe timed out after {}ms — abandoning worker, will retry", PROBE_TIMEOUT.as_millis());
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if let Some(state) = result.lock().unwrap().take() {
+            *cache().lock().unwrap() = state;
+        }
+        // If we abandoned the worker, leak it — it'll finish in its own
+        // time and Drop will tidy up. Process is single-tenant.
+        std::thread::sleep(PROBE_INTERVAL);
+    });
+}
+
+fn read_once() -> Result<MediaState> {
     let session = match current_session() {
         Ok(s) => s,
         Err(_) => return Ok(MediaState::default()),
@@ -46,14 +106,14 @@ pub fn current() -> Result<MediaState> {
     let artist = props.Artist()?.to_string();
 
     let sig = format!("{title}\u{1F}{artist}");
-    let mut cache = thumb_cache().lock().unwrap();
-    let stale = cache.2.elapsed() > THUMBNAIL_TTL;
-    if cache.0 != sig || stale {
-        cache.0 = sig;
-        cache.1 = extract_thumbnail(&props);
-        cache.2 = Instant::now();
+    let mut tc = thumb_cache().lock().unwrap();
+    let stale = tc.2.elapsed() > THUMBNAIL_TTL;
+    if tc.0 != sig || stale {
+        tc.0 = sig;
+        tc.1 = extract_thumbnail(&props);
+        tc.2 = Instant::now();
     }
-    let thumbnail = cache.1.clone();
+    let thumbnail = tc.1.clone();
 
     let source_app = session.SourceAppUserModelId().ok().map(|s| s.to_string());
 
