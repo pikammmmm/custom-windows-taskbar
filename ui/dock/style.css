@@ -353,31 +353,71 @@ body.drop-active .glass-card {
 .tray-chip.batt-chip.charging .tray-icon { color: #6ee7b7; }
 .tray-chip.batt-chip.low .tray-icon { color: #f88; }
 
-/* Voice dictation toggle. <button> reset so it matches the chip surface,
-   then state-driven colouring via [data-state]. */
+/* Voice dictation toggle. Bigger than the surrounding chips so the icon
+   reads instantly at a glance + serves as the primary "speak" affordance. */
 .tray-chip.voice-chip {
   appearance: none;
   border: 0;
   font: inherit;
   color: #cfd6e4;
+  padding: 6px 10px;
+  position: relative;
+}
+.tray-chip.voice-chip .voice-icon {
+  display: block;
+  transition: color 140ms ease, transform 180ms ease, filter 180ms ease;
+}
+/* Tiny indicator dot to the upper-right of the mic — colour reinforces
+   state for users who can't read the colour shift on the icon alone. */
+.tray-chip.voice-chip .voice-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 0 transparent;
+  transition: background 140ms ease, box-shadow 200ms ease, transform 180ms ease;
 }
 .tray-chip.voice-chip[data-state="loading"] {
   opacity: 0.45;
   cursor: progress;
 }
-.tray-chip.voice-chip[data-state="recording"] .tray-icon {
+.tray-chip.voice-chip[data-state="idle"]:hover .voice-icon {
+  color: #ffffff;
+  transform: scale(1.08);
+}
+.tray-chip.voice-chip[data-state="recording"] .voice-icon {
   color: #ff5b6e;
+  filter: drop-shadow(0 0 6px rgba(255, 91, 110, 0.55));
   animation: voice-pulse 1s ease-in-out infinite;
 }
-.tray-chip.voice-chip[data-state="transcribing"] .tray-icon {
+.tray-chip.voice-chip[data-state="recording"] .voice-dot {
+  background: #ff5b6e;
+  box-shadow: 0 0 6px 1px rgba(255, 91, 110, 0.7);
+  animation: voice-dot-pulse 1s ease-in-out infinite;
+}
+.tray-chip.voice-chip[data-state="transcribing"] .voice-icon {
   color: #ffd479;
 }
-.tray-chip.voice-chip[data-state="error"] .tray-icon {
+.tray-chip.voice-chip[data-state="transcribing"] .voice-dot {
+  background: #ffd479;
+  box-shadow: 0 0 6px 1px rgba(255, 212, 121, 0.7);
+}
+.tray-chip.voice-chip[data-state="error"] .voice-icon {
   color: #ff5b6e;
 }
+.tray-chip.voice-chip[data-state="error"] .voice-dot {
+  background: #ff5b6e;
+}
 @keyframes voice-pulse {
-  0%, 100% { opacity: 1;    transform: scale(1);    }
-  50%      { opacity: 0.55; transform: scale(0.85); }
+  0%, 100% { transform: scale(1);    }
+  50%      { transform: scale(0.88); }
+}
+@keyframes voice-dot-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1;    }
+  50%      { transform: scale(1.5); opacity: 0.55; }
 }
 
 /* Media chip — album art with prev/play/next mini buttons hugging it.
