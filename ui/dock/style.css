@@ -62,7 +62,12 @@ body.drop-active .glass-card {
 }
 .dock-icon:hover {
   background: rgba(255,255,255,0.14);
-  transform: translateY(-5px) scale(1.18);
+  /* Pure scale, no translateY — keeps the icon's top edge well inside
+     the 64px dock window (no clip against the window region). The drop
+     shadow is offset *down* with a negative spread so its upward bleed
+     stays under ~2px and doesn't peek past the dock's top border. */
+  transform: scale(1.08);
+  box-shadow: 0 9px 12px -3px rgba(0, 0, 0, 0.42);
   z-index: 3;
 }
 /* Neighbors of the hovered icon get a smaller lift. :has lets us reach
@@ -70,7 +75,7 @@ body.drop-active .glass-card {
    Both supported by current WebView2. */
 .dock-icon:hover + .dock-icon,
 .dock-icon:has(+ .dock-icon:hover) {
-  transform: translateY(-2px) scale(1.07);
+  transform: scale(1.03);
 }
 
 .dock-icon img {
