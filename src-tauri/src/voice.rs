@@ -53,8 +53,8 @@ impl VoiceController {
         if cfg.enabled && !cfg.python_exe.as_os_str().is_empty() && !cfg.script.as_os_str().is_empty() {
             spawn_supervisor(app, inner, cfg);
         } else {
-            tracing::info!(
-                "voice controller: disabled (enabled={}, python_exe={:?}, script={:?})",
+            crate::glog!(
+                "voice controller: not spawned (enabled={}, python_exe={:?}, script={:?})",
                 cfg.enabled, cfg.python_exe, cfg.script
             );
         }
@@ -161,7 +161,7 @@ fn spawn_one(app: &AppHandle, inner: &Arc<Mutex<Inner>>, cfg: &VoiceCfg) -> Resu
     let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout handle"))?;
     let stderr = child.stderr.take().ok_or_else(|| anyhow!("no stderr handle"))?;
     let pid = child.id();
-    tracing::info!("voice-ptt spawned (pid={pid})");
+    crate::glog!("voice-ptt spawned (pid={pid})");
 
     {
         let mut g = inner.lock().unwrap();
@@ -217,7 +217,7 @@ fn spawn_one(app: &AppHandle, inner: &Arc<Mutex<Inner>>, cfg: &VoiceCfg) -> Resu
         g.child = None;
     }
 
-    tracing::info!("voice-ptt exited (pid={pid}, status={exit_status:?})");
+    crate::glog!("voice-ptt exited (pid={pid}, status={exit_status:?})");
     if exit_status.success() {
         Ok(())
     } else {
@@ -242,6 +242,7 @@ fn handle_event_line(app: &AppHandle, inner: &Arc<Mutex<Inner>>, line: &str) {
                 let mut g = inner.lock().unwrap();
                 g.last_state = state.to_string();
             }
+            crate::glog!("voice state -> {state}");
             let _ = app.emit("voice:state", state);
         }
         "transcript" => {
