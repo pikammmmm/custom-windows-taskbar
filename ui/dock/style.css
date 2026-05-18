@@ -12,8 +12,8 @@
    so the user knows the drop will land somewhere meaningful. */
 body.drop-active .glass-card {
   box-shadow:
-    0 0 0 2px rgba(92, 182, 255, 0.55) inset,
-    0 8px 32px rgba(92, 182, 255, 0.25);
+    0 0 0 2px rgba(var(--accent-rgb), 0.55) inset,
+    0 8px 32px rgba(var(--accent-rgb), 0.25);
 }
 
 /* The center section is the only horizontally-scrolling part. min-width:0
@@ -100,10 +100,10 @@ body.drop-active .glass-card {
 
 /* Foreground app — subtle blue glow ring */
 .dock-icon.foreground {
-  background: rgba(92, 182, 255, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
   box-shadow:
-    0 0 0 1px rgba(92, 182, 255, 0.35) inset,
-    0 0 14px rgba(92, 182, 255, 0.22);
+    0 0 0 1px rgba(var(--accent-rgb), 0.35) inset,
+    0 0 14px rgba(var(--accent-rgb), 0.22);
 }
 
 /* Newly-launched app icon plays a one-shot bounce when it first appears */
@@ -195,8 +195,8 @@ body.drop-active .glass-card {
   background: rgba(255, 255, 255, 0.08);
 }
 .window-preview-row.foreground {
-  background: rgba(92, 182, 255, 0.16);
-  box-shadow: 0 0 0 1px rgba(92, 182, 255, 0.30) inset;
+  background: rgba(var(--accent-rgb), 0.16);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.30) inset;
 }
 .window-preview-glyph {
   font-size: 13px;
@@ -248,8 +248,8 @@ body.drop-active .glass-card {
   bottom: 4px;
   width: 3px;
   border-radius: 2px;
-  background: #5cb6ff;
-  box-shadow: 0 0 8px rgba(92, 182, 255, 0.85);
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.85);
   pointer-events: none;
 }
 .dock-icon.drop-before::before { left: -5px; }
@@ -282,20 +282,20 @@ body.drop-active .glass-card {
 .dock-icon.foreground .indicator .seg:first-child {
   width: 14px;
   border-radius: 2px;
-  background: #5cb6ff;
-  box-shadow: 0 0 8px rgba(92, 182, 255, 0.95);
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.95);
   animation: indicator-pulse 2.4s ease-in-out infinite;
 }
 @keyframes indicator-pulse {
   0%, 100% { opacity: 0.85; }
-  50%      { opacity: 1; box-shadow: 0 0 12px rgba(92, 182, 255, 1); }
+  50%      { opacity: 1; box-shadow: 0 0 12px rgba(var(--accent-rgb), 1); }
 }
 
 /* ────────────────────────────────────────────────────────────────────────
    Start button + HUD toggle button — same icon footprint, custom glow
    ──────────────────────────────────────────────────────────────────────── */
 .dock-icon.start-button svg {
-  filter: drop-shadow(0 0 6px rgba(92, 182, 255, 0.6));
+  filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.6));
 }
 .dock-icon.start-button:hover svg path {
   fill: #8accff;
@@ -457,7 +457,7 @@ body.drop-active .glass-card {
 }
 .tray-media-prev:hover,
 .tray-media-next:hover {
-  background: rgba(92, 182, 255, 0.20);
+  background: rgba(var(--accent-rgb), 0.20);
   color: #fff;
 }
 .tray-media-prev:active,

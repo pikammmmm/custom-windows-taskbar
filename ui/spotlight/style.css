@@ -41,7 +41,7 @@
   font: inherit;
   color: var(--glass-fg);
   font-size: 19px;
-  caret-color: #5cb6ff;
+  caret-color: var(--accent);
 }
 #q::placeholder { color: var(--glass-fg-dim); }
 .spotlight-hint {
@@ -128,7 +128,7 @@
   text-transform: uppercase;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(92, 182, 255, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
   color: rgba(180, 215, 255, 0.95);
   flex-shrink: 0;
 }
@@ -160,19 +160,19 @@
 .spotlight-row:hover .pin-btn,
 .spotlight-row.selected .pin-btn { opacity: 1; }
 .spotlight-row .pin-btn:hover {
-  background: rgba(92, 182, 255, 0.28);
+  background: rgba(var(--accent-rgb), 0.28);
   color: #fff;
 }
 .spotlight-row .pin-btn.pinned {
-  background: rgba(92, 182, 255, 0.40);
+  background: rgba(var(--accent-rgb), 0.40);
   color: #fff;
   opacity: 1;
 }
 .spotlight-row.selected {
-  background: linear-gradient(90deg, rgba(92, 182, 255, 0.28), rgba(92, 182, 255, 0.10));
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.28), rgba(var(--accent-rgb), 0.10));
   box-shadow:
-    0 0 0 1px rgba(92, 182, 255, 0.40) inset,
-    0 6px 22px rgba(92, 182, 255, 0.18);
+    0 0 0 1px rgba(var(--accent-rgb), 0.40) inset,
+    0 6px 22px rgba(var(--accent-rgb), 0.18);
 }
 
 .spotlight-empty {

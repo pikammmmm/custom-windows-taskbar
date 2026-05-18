@@ -2,9 +2,17 @@
   --glass-fg: rgba(255, 255, 255, 0.95);
   --glass-fg-dim: rgba(255, 255, 255, 0.55);
   --glass-radius: 22px;
-  --glass-bg: rgba(12, 14, 20, 0.18);
-  --glass-bg-top: rgba(28, 32, 44, 0.22);
-  --glass-bg-bot: rgba(8, 10, 14, 0.18);
+  /* Theme-driven — overridden at runtime by ui/shared/theme.js from the
+     persisted `theme` in settings.json. Defaults match the original
+     hard-coded blue (#5cb6ff = rgb(92, 182, 255)) so first run looks
+     identical to pre-theme-manager builds. */
+  --accent: #5cb6ff;
+  --accent-rgb: 92, 182, 255;
+  --glass-hue: 0deg;
+  --glass-opacity: 1;
+  --glass-bg: rgba(12, 14, 20, calc(0.18 * var(--glass-opacity)));
+  --glass-bg-top: rgba(28, 32, 44, calc(0.22 * var(--glass-opacity)));
+  --glass-bg-bot: rgba(8, 10, 14, calc(0.18 * var(--glass-opacity)));
   /* Border is barely-there — was 0.16/0.28 which printed a clearly visible
      bright ring around the glass card and read as a second visible "layer"
      when combined with the SetWindowRgn clip's antialiasing. */
@@ -39,8 +47,8 @@ html, body {
   height: 100%;
   border-radius: var(--glass-radius);
   background: linear-gradient(180deg, var(--glass-bg-top) 0%, var(--glass-bg-bot) 100%);
-  backdrop-filter: blur(60px) saturate(180%);
-  -webkit-backdrop-filter: blur(60px) saturate(180%);
+  backdrop-filter: blur(60px) saturate(180%) hue-rotate(var(--glass-hue));
+  -webkit-backdrop-filter: blur(60px) saturate(180%) hue-rotate(var(--glass-hue));
   border: 1px solid var(--glass-border);
   border-top-color: var(--glass-border-top);
   box-sizing: border-box;

@@ -60,7 +60,7 @@
   transition: border-color 120ms ease, background 120ms ease;
 }
 .clip-filter:focus {
-  border-color: rgba(92, 182, 255, 0.55);
+  border-color: rgba(var(--accent-rgb), 0.55);
   background: rgba(255, 255, 255, 0.07);
 }
 .clip-filter::placeholder { color: var(--glass-fg-dim); }
@@ -99,9 +99,9 @@
   border-color: rgba(255, 255, 255, 0.14);
 }
 .clip-row.active {
-  background: rgba(92, 182, 255, 0.18);
-  border-color: rgba(92, 182, 255, 0.45);
-  box-shadow: 0 0 0 1px rgba(92, 182, 255, 0.30) inset;
+  background: rgba(var(--accent-rgb), 0.18);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.30) inset;
 }
 .clip-row:active { transform: scale(0.98); }
 

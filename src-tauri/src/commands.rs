@@ -586,6 +586,34 @@ pub fn get_weather_city() -> Option<GeoCity> {
     })
 }
 
+/// Current theme — accent color + glass hue rotation + glass opacity.
+/// Frontend reads this on init to apply CSS variables before first paint.
+#[tauri::command]
+pub fn get_theme() -> config::Theme {
+    config::load_settings().map(|s| s.theme).unwrap_or_default()
+}
+
+/// Persist a new theme and broadcast it. Every panel (dock, HUD,
+/// clipboard, spotlight, menu) listens for `theme:changed` and re-applies
+/// the CSS variables without needing a glassbar restart.
+#[tauri::command]
+pub fn set_theme(
+    app: tauri::AppHandle,
+    accent: String,
+    glass_hue: i16,
+    glass_opacity: f32,
+) -> Result<(), String> {
+    let mut s = config::load_settings().map_err(|e| e.to_string())?;
+    s.theme = config::Theme {
+        accent,
+        glass_hue,
+        glass_opacity: glass_opacity.clamp(0.0, 1.0),
+    };
+    config::save_settings(&s).map_err(|e| e.to_string())?;
+    let _ = app.emit("theme:changed", &s.theme);
+    Ok(())
+}
+
 /// Minimal URL-component encode — geocoding queries are short, plain
 /// city names so we just escape the bytes ureq's URL parser would refuse.
 fn urlencode(s: &str) -> String {

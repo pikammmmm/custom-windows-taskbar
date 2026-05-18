@@ -428,6 +428,85 @@ citySearch?.addEventListener('input', () => {
   }, 280);
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+// Theme picker — accent swatches + glass tint + glass opacity.
+// shared/theme.js already applies the live theme; this block just sends
+// the user's edits back to the backend, which persists + re-broadcasts so
+// every other panel (dock, clipboard, spotlight, menu) repaints too.
+// ─────────────────────────────────────────────────────────────────────────
+const themeSwatches = document.querySelectorAll('.theme-swatch[data-accent]');
+const themeCustom = document.getElementById('theme-accent-custom');
+const themeHue = document.getElementById('theme-hue');
+const themeHueVal = document.getElementById('theme-hue-val');
+const themeOpacity = document.getElementById('theme-opacity');
+const themeOpacityVal = document.getElementById('theme-opacity-val');
+
+let themeState = { accent: '#5cb6ff', glass_hue: 0, glass_opacity: 1.0 };
+
+function syncThemeControls() {
+  themeCustom.value = themeState.accent;
+  themeHue.value = String(themeState.glass_hue ?? 0);
+  themeHueVal.textContent = `${themeState.glass_hue ?? 0}°`;
+  themeOpacity.value = String(themeState.glass_opacity ?? 1);
+  themeOpacityVal.textContent = `${Math.round((themeState.glass_opacity ?? 1) * 100)}%`;
+  themeSwatches.forEach(sw => {
+    sw.classList.toggle('selected', sw.dataset.accent.toLowerCase() === themeState.accent.toLowerCase());
+  });
+}
+
+function pushTheme() {
+  invoke('set_theme', {
+    accent: themeState.accent,
+    glassHue: themeState.glass_hue,
+    glassOpacity: themeState.glass_opacity,
+  }).catch((err) => invoke('dbg_log', { message: `set_theme failed: ${err}` }).catch(() => {}));
+}
+
+// Seed the controls from the persisted theme on first paint.
+invoke('get_theme').then((t) => {
+  if (t) { themeState = t; syncThemeControls(); }
+}).catch(() => {});
+
+themeSwatches.forEach(sw => {
+  sw.addEventListener('click', () => {
+    themeState.accent = sw.dataset.accent;
+    syncThemeControls();
+    pushTheme();
+  });
+});
+function localPreview() {
+  // Live-paint just this window's CSS vars so the slider/picker feels
+  // instant. pushTheme persists + broadcasts, which is on `change`
+  // (commit), not `input` (every micro-movement) to keep settings.json
+  // writes sane.
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(themeState.accent || '');
+  const root = document.documentElement.style;
+  root.setProperty('--accent', themeState.accent);
+  if (m) root.setProperty('--accent-rgb', `${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)}`);
+  root.setProperty('--glass-hue', `${themeState.glass_hue}deg`);
+  root.setProperty('--glass-opacity', String(themeState.glass_opacity));
+}
+themeCustom.addEventListener('input', (e) => {
+  themeState.accent = e.target.value;
+  syncThemeControls();
+  localPreview();
+});
+themeCustom.addEventListener('change', pushTheme);
+themeHue.addEventListener('input', (e) => {
+  themeState.glass_hue = parseInt(e.target.value, 10);
+  themeHueVal.textContent = `${themeState.glass_hue}°`;
+  localPreview();
+});
+themeHue.addEventListener('change', pushTheme);
+themeOpacity.addEventListener('input', (e) => {
+  themeState.glass_opacity = parseFloat(e.target.value);
+  themeOpacityVal.textContent = `${Math.round(themeState.glass_opacity * 100)}%`;
+  localPreview();
+});
+themeOpacity.addEventListener('change', pushTheme);
+// Keep the picker in sync if another window changes the theme.
+listen('theme:changed', (e) => { themeState = e.payload; syncThemeControls(); });
+
 // Quick toggles — `data-uri` opens a Windows Settings deep link,
 // `data-action` runs a named backend command instead.
 const QUICK_ACTIONS = {

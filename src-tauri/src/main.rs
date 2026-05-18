@@ -161,6 +161,8 @@ fn main() {
             commands::geocode_city,
             commands::set_weather_city,
             commands::get_weather_city,
+            commands::get_theme,
+            commands::set_theme,
             commands::set_autostart,
             commands::get_autostart,
             commands::set_volume,

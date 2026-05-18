@@ -37,6 +37,36 @@ pub fn imported_taskbar_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("imported_taskbar.json"))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Theme {
+    /// Accent color as `#RRGGBB`. Drives indicators, hover focus glows,
+    /// progress bars, foreground app rings, WARP toggle border, etc.
+    #[serde(default = "default_accent")]
+    pub accent: String,
+    /// Glass tint hue rotation in degrees, applied to the dock + HUD
+    /// surface via `filter: hue-rotate()`. 0 = original (blue-grey).
+    #[serde(default)]
+    pub glass_hue: i16,
+    /// Glass surface opacity multiplier, 0.0..=1.0. Scales the
+    /// `--glass-bg-top` / `--glass-bg-bot` rgba alpha to make the dock
+    /// + HUD more or less see-through without changing text legibility.
+    #[serde(default = "default_glass_opacity")]
+    pub glass_opacity: f32,
+}
+
+fn default_accent() -> String { "#5cb6ff".into() }
+fn default_glass_opacity() -> f32 { 1.0 }
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            accent: default_accent(),
+            glass_hue: 0,
+            glass_opacity: default_glass_opacity(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -58,6 +88,8 @@ pub struct Settings {
     /// only briefly during the user-intent window.
     #[serde(default)]
     pub volume_percent: Option<u8>,
+    #[serde(default)]
+    pub theme: Theme,
 }
 
 impl Default for Settings {
@@ -69,6 +101,7 @@ impl Default for Settings {
             weather_lat: None,
             weather_lon: None,
             volume_percent: None,
+            theme: Theme::default(),
         }
     }
 }

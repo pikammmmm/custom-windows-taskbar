@@ -172,6 +172,33 @@
             <input type="text" id="city-search" placeholder="Search city…" autocomplete="off" spellcheck="false">
             <ul class="city-results" id="city-results"></ul>
           </div>
+
+          <!-- Theme picker — accent colour swatches + glass tint hue +
+               glass opacity slider. Each change persists immediately and
+               broadcasts to every panel via `theme:changed`. -->
+          <div class="settings-row settings-section-head"><span>Theme</span></div>
+          <div class="theme-picker">
+            <div class="theme-swatch-row" id="theme-swatch-row">
+              <button class="theme-swatch" data-accent="#5cb6ff" title="Sky" style="--swatch-color:#5cb6ff"></button>
+              <button class="theme-swatch" data-accent="#a78bfa" title="Lavender" style="--swatch-color:#a78bfa"></button>
+              <button class="theme-swatch" data-accent="#f472b6" title="Rose" style="--swatch-color:#f472b6"></button>
+              <button class="theme-swatch" data-accent="#fb923c" title="Orange" style="--swatch-color:#fb923c"></button>
+              <button class="theme-swatch" data-accent="#34d399" title="Mint" style="--swatch-color:#34d399"></button>
+              <button class="theme-swatch" data-accent="#facc15" title="Gold" style="--swatch-color:#facc15"></button>
+              <button class="theme-swatch" data-accent="#f87171" title="Coral" style="--swatch-color:#f87171"></button>
+              <input type="color" id="theme-accent-custom" title="Custom accent">
+            </div>
+            <div class="theme-slider-row">
+              <label for="theme-hue">Glass tint</label>
+              <input type="range" id="theme-hue" min="0" max="360" step="1" value="0">
+              <span class="theme-slider-val" id="theme-hue-val">0°</span>
+            </div>
+            <div class="theme-slider-row">
+              <label for="theme-opacity">Glass opacity</label>
+              <input type="range" id="theme-opacity" min="0.2" max="1" step="0.05" value="1">
+              <span class="theme-slider-val" id="theme-opacity-val">100%</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -188,5 +215,6 @@
     <div class="drag-handle" id="drag"></div>
     <div class="toast" id="toast"></div>
   </div>
+  <script type="module" src="../shared/theme.js"></script>
   <script type="module" src="app.js"></script>
 </body></html>

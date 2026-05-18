@@ -139,7 +139,12 @@
 .chip-bar-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #4ad, #6cf);
+  /* Default fill tracks the theme accent. .warn and .crit deliberately
+     stay yellow/red because they signal *load*, not theme — recolouring
+     them would hide the at-a-glance "your CPU is on fire" cue. */
+  background: linear-gradient(90deg,
+    rgba(var(--accent-rgb), 0.85),
+    rgba(var(--accent-rgb), 1));
   border-radius: 2px;
   transition: width 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
               background 200ms ease;
@@ -376,8 +381,8 @@
   min-height: 36px;
 }
 .stash-dropzone.over {
-  background: rgba(92, 182, 255, 0.12);
-  border-color: rgba(92, 182, 255, 0.55);
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.55);
   color: var(--glass-fg);
 }
 .stash-list {
@@ -449,8 +454,95 @@
   cursor: pointer;
 }
 .settings-row input[type=checkbox] {
-  accent-color: #5cb6ff;
+  accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* Theme picker — accent swatches + glass tint hue + glass opacity. */
+.settings-section-head {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--glass-fg-dim);
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0;
+}
+.theme-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.theme-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--swatch-color, #888);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.theme-swatch:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
+}
+.theme-swatch.selected {
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 10px var(--swatch-color);
+}
+#theme-accent-custom {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  margin-left: 2px;
+}
+#theme-accent-custom::-webkit-color-swatch-wrapper { padding: 0; }
+#theme-accent-custom::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+.theme-slider-row {
+  display: grid;
+  grid-template-columns: 78px 1fr 40px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+}
+.theme-slider-row input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+}
+.theme-slider-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(var(--accent-rgb), 0.6);
+}
+.theme-slider-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Apps section — collapsible */
@@ -585,7 +677,7 @@
   transition: border-color 120ms ease, background 120ms ease;
 }
 #city-search:focus {
-  border-color: rgba(92, 182, 255, 0.45);
+  border-color: rgba(var(--accent-rgb), 0.45);
   background: rgba(255, 255, 255, 0.10);
 }
 .city-results {
@@ -606,7 +698,7 @@
   cursor: pointer;
   transition: background 100ms ease;
 }
-.city-results li:hover { background: rgba(92, 182, 255, 0.18); }
+.city-results li:hover { background: rgba(var(--accent-rgb), 0.18); }
 .city-results .city-name { font-weight: 500; }
 .city-results .city-sub {
   font-size: 10px;
@@ -650,8 +742,8 @@
     color 130ms ease;
 }
 .power-btn:hover {
-  background: rgba(92, 182, 255, 0.14);
-  border-color: rgba(92, 182, 255, 0.30);
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.30);
   transform: translateY(-1px);
 }
 .power-btn:active { transform: translateY(0); }
