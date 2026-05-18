@@ -1158,15 +1158,15 @@ async function onRightClick(exe, label, _runningSnapshot, event) {
     args: isPinned ? { path: exe } : { path: exe, displayName: label },
   });
 
-  if (running && running.windows.length > 0) {
+  if (live && live.windows.length > 0) {
     items.push({ kind: 'separator' });
     items.push({
       kind: 'item',
       danger: true,
       glyph: '✕',
-      label: `Close all (${running.windows.length})`,
+      label: `Close all (${live.windows.length})`,
       action: 'close_hwnds',
-      args: { hwnds: running.windows.map(w => w.hwnd) },
+      args: { hwnds: live.windows.map(w => w.hwnd) },
     });
   }
 
