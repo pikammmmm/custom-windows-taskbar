@@ -912,15 +912,29 @@ tray.mic.addEventListener('click', async (e) => {
 // Click handlers + right-click menu (unchanged behavior, just relocated
 // here from the previous flat structure)
 // ─────────────────────────────────────────────────────────────────────────
-async function onClick(exe, _label, running) {
-  if (!running || running.windows.length === 0) {
+async function onClick(exe, _label, _runningSnapshot) {
+  // Read the LIVE running list, not the one captured by closure when the
+  // icon was rendered. apps:changed events trigger renderCenter, but
+  // (a) the iconNode chain is async (awaits getIcon) so two renders can
+  // interleave and leave a stale icon in the DOM, and (b) the user can
+  // click inside the 500ms poll-gap window after closing an app. Either
+  // way the captured `running` may point at dead hwnds — focus_window
+  // then silently fails on the dead hwnd, the user sees "click does
+  // nothing", and the launch branch never gets reached. Re-resolving
+  // against the live `running` array here makes click always reflect
+  // the current process state.
+  const exeLc = exe.toLowerCase();
+  const live = running.find(a =>
+    a.exe_path.toLowerCase() === exeLc || pathsMatchSameApp(a.exe_path, exeLc)
+  );
+  if (!live || live.windows.length === 0) {
     await invoke('launch', { path: exe });
     return;
   }
   const fg = await invoke('foreground_hwnd');
   // Single-window apps: classic focus / minimize toggle.
-  if (running.windows.length === 1) {
-    const target = running.windows[0].hwnd;
+  if (live.windows.length === 1) {
+    const target = live.windows[0].hwnd;
     if (fg === target) {
       await invoke('minimize_window', { hwnd: target });
     } else {
@@ -933,11 +947,11 @@ async function onClick(exe, _label, running) {
   // first. Matches the Windows-11 taskbar's "click again to cycle" UX —
   // users with 5 Chrome windows can step through them with repeated
   // dock-icon clicks instead of having to hover the preview every time.
-  const idxOfFg = running.windows.findIndex(w => w.hwnd === fg);
+  const idxOfFg = live.windows.findIndex(w => w.hwnd === fg);
   const targetIdx = idxOfFg >= 0
-    ? (idxOfFg + 1) % running.windows.length
+    ? (idxOfFg + 1) % live.windows.length
     : 0;
-  await invoke('focus_window', { hwnd: running.windows[targetIdx].hwnd });
+  await invoke('focus_window', { hwnd: live.windows[targetIdx].hwnd });
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1080,14 +1094,21 @@ function showPreview(anchorNode, label, running) {
   activePreview.popup = popup;
 }
 
-async function onRightClick(exe, label, running, event) {
+async function onRightClick(exe, label, _runningSnapshot, event) {
+  // Same closure-staleness fix as onClick — re-resolve against the live
+  // `running` array so the menu reflects the current process state, not
+  // whatever the icon captured at last render.
+  const exeLc = exe.toLowerCase();
+  const live = running.find(a =>
+    a.exe_path.toLowerCase() === exeLc || pathsMatchSameApp(a.exe_path, exeLc)
+  );
   const items = [];
   items.push({ kind: 'header', icon: await getIcon(exe, null), name: label });
   fetchAppInfo(exe, label, items).catch(() => {});
 
-  if (running && running.windows.length > 0) {
+  if (live && live.windows.length > 0) {
     items.push({ kind: 'separator' });
-    for (const w of running.windows) {
+    for (const w of live.windows) {
       items.push({
         kind: 'item',
         windowRow: true,
