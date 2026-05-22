@@ -6,17 +6,18 @@ A glassy, always-on-top floating dock + HUD for Windows. Coexists with the auto-
 
 ![glassbar dock and HUD on Windows 11](docs/screenshots/hero.png)
 
-> Status: early release (v0.1.0). Bugs and rough edges expected on
+> Status: early release (v0.1.30). Bugs and rough edges expected on
 > non-1080p / multi-monitor / fractional-DPI configurations. Issues and
 > PRs warmly welcomed.
 
 ## Features
 
-- **Dock** — pinned + running app icons, click to launch / focus / minimize, right-click for window list + pin / unpin, drag to reorder. Auto-shows on cursor-bottom, slides away when you leave.
+- **Dock** — pinned + running app icons, click to launch / focus / minimize, right-click for window list + pin / unpin, drag to reorder. Includes a push-to-talk mic chip that toggles the local voice supervisor. Auto-shows on cursor-bottom, slides away when you leave.
   ![dock animation: slide-in / slide-out](docs/screenshots/dock-anim.gif)
 - **Spotlight launcher** — Win-key tap or the dock's launcher button opens a glassy search overlay. Indexes the Start Menu, UWP / Microsoft Store apps (via `Get-StartApps`), and files in your common folders. Acronym + fuzzy / typo-tolerant matching.
 - **HUD** — clock, Open-Meteo weather (any city via the in-app picker), CPU / RAM / network throughput, now-playing media, audio device switcher, file stash with native drag-out, Cloudflare WARP toggle, system power menu. Drag to reposition, click the dock toggle to show / hide.
   ![HUD animation: drag and toggle](docs/screenshots/hud-anim.gif)
+- **Theme manager** — pick your own accent color, glass tint, and glass opacity from the HUD settings panel; changes apply live across every window.
 - **Glass** — Win11 acrylic backdrop, layered transparency, hand-drawn SVG icons for system apps.
 
 ## Install
@@ -28,9 +29,9 @@ All downloads live on the [Releases page](https://github.com/pikammmmm/custom-wi
 
 | File | Size | What it is |
 |---|---|---|
-| `glassbar_<version>_x64_en-US.msi` | ~2.7 MB | Installer (recommended) |
-| `glassbar.exe` | ~5.5 MB | Portable main app |
-| `uninstall.exe` | ~280 KB | Uninstaller — restores the Windows taskbar and wipes user data |
+| `glassbar_<version>_x64_en-US.msi` | ~3.7 MB | Installer (recommended) |
+| `glassbar.exe` | ~5.8 MB | Portable main app |
+| `uninstall.exe` | ~300 KB | Uninstaller — restores the Windows taskbar and wipes user data |
 
 ### Option A — Installer (recommended)
 
@@ -115,7 +116,7 @@ A starter `pinned.example.json` ships in the repo.
 
 ## Auto-start at login
 
-Toggle from the dock devtools (or call `set_autostart` programmatically). Disabled by default.
+Open the HUD → **Settings** → toggle *Launch at sign-in*. Disabled by default.
 
 ## Requirements
 
@@ -126,5 +127,3 @@ Toggle from the dock devtools (or call `set_autostart` programmatically). Disabl
 
 - Single primary monitor only.
 - No third-party system tray hosting (planned).
-- No in-app settings UI — edit JSON for now.
-- One glass theme.
