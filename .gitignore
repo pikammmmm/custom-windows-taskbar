@@ -1,5 +1,9 @@
 # Build artifacts
 target/
+src-tauri/gen/
+
+# Local agent / skill cache
+.superpowers/
 
 # Temporary screenshots in repo root
 /full_now.png
