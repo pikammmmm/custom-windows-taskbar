@@ -22,7 +22,6 @@ mod app_actions;
 mod stash;
 mod wndproc;
 mod logger;
-mod voice;
 
 /// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
 /// into our pinned.json. Critical: only items the user has pinned to the
@@ -201,7 +200,6 @@ fn main() {
             commands::hide_clipboard,
             commands::clipboard_use_entry,
             commands::clipboard_clear,
-            commands::voice_toggle,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
@@ -237,19 +235,6 @@ fn main() {
             } else if !settings.auto_start && autostart::is_enabled() {
                 let _ = autostart::disable();
             }
-
-            // Old voice-ptt installs registered themselves in the user's
-            // Startup folder. Now that glassbar owns voice-ptt as a child
-            // process, that shortcut would launch a competing instance. No-op
-            // if the shortcut isn't there.
-            autostart::cleanup_legacy_voice_ptt_autostart();
-
-            // Spawn and manage the voice-ptt child if voice.json is configured.
-            // When the config has empty paths (default state on first run), the
-            // controller stays idle and no child is launched.
-            let voice_cfg = config::load_voice().unwrap_or_default();
-            let voice_controller = voice::VoiceController::new(app.handle().clone(), voice_cfg);
-            app.manage(voice_controller);
 
             let pinned_clone = pinned_state.clone();
             let app_handle = app.handle().clone();
@@ -333,14 +318,11 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|app, event| {
+        .run(|_app, event| {
             // Restore the Windows taskbar on graceful exit so the user is not
             // left without a working shell if they uninstall / quit glassbar.
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
                 let _ = shell_taskbar::show_windows_taskbar();
-                if let Some(controller) = app.try_state::<voice::VoiceController>() {
-                    controller.shutdown();
-                }
             }
         });
 }
