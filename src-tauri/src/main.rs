@@ -230,9 +230,15 @@ fn main() {
             let pinned_state: pinned::PinnedHandle = Arc::new(Mutex::new(initial));
 
             let settings = config::load_settings().unwrap_or_default();
-            if settings.auto_start && !autostart::is_enabled() {
+            if settings.auto_start {
+                // Always re-point the Run key at *this* exe's current path so a
+                // binary that was moved, renamed, or reinstalled self-heals on
+                // launch. The old `&& !is_enabled()` gate skipped this whenever
+                // any value already existed, so once the recorded path went
+                // stale (e.g. the exe moved out of Downloads) the entry dangled
+                // and login-launch silently failed. enable() is idempotent.
                 let _ = autostart::enable();
-            } else if !settings.auto_start && autostart::is_enabled() {
+            } else if autostart::is_enabled() {
                 let _ = autostart::disable();
             }
 
