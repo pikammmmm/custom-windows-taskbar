@@ -4,6 +4,9 @@ import { ringTransform, ringRadius } from './ring.js';
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
+const slog = (m) => { try { invoke('switcher_log', { msg: String(m) }); } catch (_) {} };
+slog('app.js module load start');
+
 const canvas = document.getElementById('ring');
 const scrim = document.getElementById('scrim');
 const labelEl = document.getElementById('label');
@@ -121,6 +124,7 @@ function frameRing() {
 }
 
 window.__switcherApply = (payload) => {
+  slog('apply: windows=' + (payload && payload.windows ? payload.windows.length : 'none') + ' selected=' + (payload ? payload.selected : '?'));
   if (!payload || !Array.isArray(payload.windows)) return;
   clearCards();
   cards = payload.windows.map(makeCard);
@@ -268,12 +272,14 @@ window.addEventListener('click', (ev) => {
 async function init() {
   await listen('switcher:open', (e) => window.__switcherApply(e.payload));
   await listen('switcher:select', (e) => {
+    slog('recv select ' + e.payload);
     selected = e.payload | 0;
     updateLabel();
   });
   await listen('switcher:thumb', (e) => {
     const { id, thumb } = e.payload || {};
     const card = cards.find((c) => c.id === id);
+    slog('recv thumb id=' + id + ' card=' + !!card);
     if (card && thumb) setTexture(card, thumb, /*isIcon*/ false);
   });
   await listen('switcher:close', () => window.__switcherClose());
@@ -281,6 +287,7 @@ async function init() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) window.__switcherClose();
   });
+  slog('init: listeners registered');
   // Apply any payload that arrived (via eval) before listeners registered.
   if (window.__switcherPending) window.__switcherApply(window.__switcherPending);
 }

@@ -4,6 +4,16 @@
   <meta charset="utf-8" />
   <title>switcher</title>
   <link rel="stylesheet" href="style.css" />
+  <script>
+    // Diagnostic: route any JS error (incl. ESM module-load failures) to the
+    // glassbar debug log so we can see them without a visible console.
+    window.addEventListener('error', (e) => {
+      try { window.__TAURI__.core.invoke('switcher_log', { msg: 'JS ERROR: ' + (e.message || e.error) + ' @' + (e.filename || '') + ':' + (e.lineno || '') }); } catch (_) {}
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      try { window.__TAURI__.core.invoke('switcher_log', { msg: 'JS REJECT: ' + ((e.reason && e.reason.message) ? e.reason.message : e.reason) }); } catch (_) {}
+    });
+  </script>
 </head>
 <body>
   <div id="scrim"></div>
