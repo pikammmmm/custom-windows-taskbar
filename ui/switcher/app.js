@@ -13,6 +13,8 @@ const labelTitle = document.getElementById('label-title');
 const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 renderer.setClearColor(0x000000, 0); // transparent — the CSS scrim shows through
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// Max anisotropic filtering keeps the angled side-cards sharp instead of blurry.
+const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
 
 const scene = new THREE.Scene();
 // Depth fog: distant cards recede + darken toward the back of the ring.
@@ -40,6 +42,11 @@ const loader = new THREE.TextureLoader();
 let cards = [];   // [{ mesh, reflection, id, item }]
 let selected = 0;
 let radius = ringRadius(1);
+// Mouse damping: cursor must travel MOUSE_DEADZONE px since the last hover-switch
+// before it switches again, and the wheel is throttled — small nudges/flicks
+// don't blow through windows.
+const MOUSE_DEADZONE = 70;
+let lastSwitchX = null, lastSwitchY = null, lastWheel = 0;
 
 // Dark rounded placeholder until an icon/thumb arrives.
 const PLACEHOLDER =
@@ -125,6 +132,7 @@ window.__switcherApply = (payload) => {
   clearCards();
   cards = payload.windows.map(makeCard);
   selected = Math.min(payload.selected ?? 0, Math.max(0, cards.length - 1));
+  lastSwitchX = null; lastSwitchY = null; // fresh deadzone each open
   radius = ringRadius(cards.length || 1);
   frameRing();
   snapLayout();
@@ -163,7 +171,7 @@ function roundRect(ctx, x, y, w, h, r) {
 // Card texture canvas — matches the plane aspect (CARD_W:CARD_H = 1.6:1) so
 // images map without distortion. Rounded corners come from clipping the canvas
 // to a rounded rect (the corners stay transparent and the scrim shows through).
-const CARD_PX_W = 512, CARD_PX_H = 320, CARD_PX_R = 34;
+const CARD_PX_W = 1280, CARD_PX_H = 800, CARD_PX_R = 84;
 
 function setTexture(card, url, isIcon) {
   const rank = isIcon ? 1 : 2;
@@ -172,6 +180,7 @@ function setTexture(card, url, isIcon) {
     // Re-check at completion: a thumbnail may have landed while we decoded.
     if (rank < card.textureRank) { if (tex.dispose) tex.dispose(); return; }
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = MAX_ANISO;
     assignTexture(card, tex);
     card.textureRank = rank;
   };
@@ -185,7 +194,7 @@ function setTexture(card, url, isIcon) {
       roundRect(ctx, 0, 0, CARD_PX_W, CARD_PX_H, CARD_PX_R);
       ctx.fillStyle = '#1c2230';
       ctx.fill();
-      const s = 150;
+      const s = 360;
       ctx.drawImage(img, (CARD_PX_W - s) / 2, (CARD_PX_H - s) / 2, s, s);
     } else {
       // Window snapshot: dark rounded card, whole window contain-fit (no crop),
@@ -263,16 +272,25 @@ function pickIndex(ev) {
 
 // Mouse only requests a selection change; Rust echoes switcher:select back and
 // THAT updates `selected` (single source of truth — no local mutation here).
+// Damped: ignore movement smaller than the deadzone so jitter doesn't switch.
 window.addEventListener('mousemove', (ev) => {
   if (!cards.length) return;
+  if (lastSwitchX !== null) {
+    const dx = ev.clientX - lastSwitchX, dy = ev.clientY - lastSwitchY;
+    if (dx * dx + dy * dy < MOUSE_DEADZONE * MOUSE_DEADZONE) return;
+  }
   const i = pickIndex(ev);
   if (i >= 0 && i !== selected) {
+    lastSwitchX = ev.clientX; lastSwitchY = ev.clientY;
     invoke('switcher_set_index', { index: i }).catch(() => {});
   }
 });
 
 window.addEventListener('wheel', (ev) => {
   if (!cards.length) return;
+  const now = performance.now();
+  if (now - lastWheel < 150) return; // throttle: one flick = one step
+  lastWheel = now;
   const dir = ev.deltaY > 0 ? 1 : -1;
   const next = (selected + dir + cards.length) % cards.length;
   invoke('switcher_set_index', { index: next }).catch(() => {});

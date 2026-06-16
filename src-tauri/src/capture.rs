@@ -20,14 +20,14 @@ const PW_RENDERFULLCONTENT: PRINT_WINDOW_FLAGS = PRINT_WINDOW_FLAGS(0x0000_0002)
 /// blank buffer (hardware-accelerated fullscreen) — callers fall back to the
 /// app icon.
 pub fn window_thumbnail_data_url(hwnd: isize, max_px: u32) -> Result<String> {
-    let png = window_thumbnail_png(hwnd, max_px)?;
+    let jpeg = window_thumbnail_bytes(hwnd, max_px)?;
     Ok(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(&png)
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&jpeg)
     ))
 }
 
-fn window_thumbnail_png(hwnd: isize, max_px: u32) -> Result<Vec<u8>> {
+fn window_thumbnail_bytes(hwnd: isize, max_px: u32) -> Result<Vec<u8>> {
     let h = HWND(hwnd as *mut _);
     unsafe {
         if IsIconic(h).as_bool() {
@@ -72,9 +72,15 @@ fn window_thumbnail_png(hwnd: isize, max_px: u32) -> Result<Vec<u8>> {
         let img = image::RgbaImage::from_raw(cw, ch, rgba)
             .ok_or_else(|| anyhow!("from_raw failed"))?;
         let (tw, th) = fit(cw, ch, max_px);
-        let scaled = image::imageops::resize(&img, tw, th, image::imageops::FilterType::Triangle);
+        // Lanczos3 keeps text/edges crisp when downscaling a large window.
+        let scaled = image::imageops::resize(&img, tw, th, image::imageops::FilterType::Lanczos3);
+        // JPEG (q88): far smaller than PNG for screenshots, so we can afford a
+        // much higher capture resolution for the same IPC payload. Window
+        // content is opaque, so dropping alpha is fine.
+        let rgb = image::DynamicImage::ImageRgba8(scaled).to_rgb8();
         let mut out = Vec::new();
-        scaled.write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)?;
+        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 88);
+        enc.encode(rgb.as_raw(), rgb.width(), rgb.height(), image::ExtendedColorType::Rgb8)?;
         Ok(out)
     }
 }
@@ -163,7 +169,7 @@ mod tests {
         let hwnd = crate::win32::foreground_hwnd();
         match window_thumbnail_data_url(hwnd, 480) {
             Ok(url) => {
-                assert!(url.starts_with("data:image/png;base64,"));
+                assert!(url.starts_with("data:image/jpeg;base64,"));
                 assert!(url.len() > 1000, "thumbnail suspiciously small: {}", url.len());
                 println!("captured {} byte data url", url.len());
             }

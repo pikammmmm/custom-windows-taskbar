@@ -124,12 +124,6 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
             let ctrl = (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
             let active = SWITCHER_ACTIVE.load(Ordering::SeqCst);
             let (action, swallow) = classify_switcher(msg, vk, alt, shift, ctrl, active);
-            if vk == VK_TAB || vk == VK_ESCAPE || VK_MENU_ANY.contains(&vk) {
-                crate::glog!(
-                    "[sw-hook] vk={:#x} msg={:#x} flags={:#x} alt={} ctrl={} shift={} active={} -> {:?} swallow={}",
-                    vk, msg, kb.flags.0, alt, ctrl, shift, active, action, swallow
-                );
-            }
             match action {
                 SwitcherAction::Open(d) => {
                     SWITCHER_ACTIVE.store(true, Ordering::SeqCst);
