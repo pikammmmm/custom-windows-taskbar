@@ -175,7 +175,8 @@ fn commit_current(app: &AppHandle) {
 fn focus_after_delay(hwnd: isize) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(90));
-        let _ = win32::focus_aggressive(hwnd);
+        win32::force_foreground(hwnd);
+        crate::glog!("[sw-loop] force_foreground target={hwnd:#x} now_fg={:#x}", win32::foreground_hwnd());
     });
 }
 

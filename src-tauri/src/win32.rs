@@ -150,6 +150,44 @@ pub fn focus_aggressive(hwnd: isize) -> Result<()> {
     Ok(())
 }
 
+/// Force `hwnd` to the foreground from a background thread that does NOT own
+/// the foreground (the switcher overlay is non-activating, so glassbar never
+/// holds it). Win11 blocks a bare SetForegroundWindow in that case; the
+/// documented workaround is to attach our input queue to the CURRENT foreground
+/// thread, borrowing its right to set the foreground, then set + raise the
+/// target. Differs from focus_aggressive (which attaches to the TARGET thread
+/// and only works when glassbar already owns the foreground, e.g. clipboard).
+pub fn force_foreground(hwnd: isize) {
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows::Win32::UI::WindowsAndMessaging::BringWindowToTop;
+    if hwnd == 0 {
+        return;
+    }
+    unsafe {
+        let target = HWND(hwnd as *mut _);
+        if IsIconic(target).as_bool() {
+            let _ = ShowWindow(target, SW_RESTORE);
+        }
+        let fg = GetForegroundWindow();
+        let our_thread = GetCurrentThreadId();
+        let mut fg_pid = 0u32;
+        let fg_thread = if fg.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(fg, Some(&mut fg_pid))
+        };
+        if fg_thread != 0 && fg_thread != our_thread {
+            let _ = AttachThreadInput(our_thread, fg_thread, true);
+            let _ = BringWindowToTop(target);
+            let _ = SetForegroundWindow(target);
+            let _ = AttachThreadInput(our_thread, fg_thread, false);
+        } else {
+            let _ = BringWindowToTop(target);
+            let _ = SetForegroundWindow(target);
+        }
+    }
+}
+
 pub fn minimize(hwnd: isize) -> Result<()> {
     unsafe {
         let _ = ShowWindow(HWND(hwnd as *mut _), SW_MINIMIZE);
