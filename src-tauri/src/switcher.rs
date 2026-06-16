@@ -34,8 +34,9 @@ pub fn anchor_rotation(ids: &[i64], anchor: i64) -> Option<usize> {
 }
 
 use serde::Serialize;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -242,14 +243,31 @@ fn open_session(app: &AppHandle, dir: i32) {
 
     *SESSION.lock().unwrap() = Some(Session { items: items.clone(), index, anchor });
 
-    // Stream thumbnails in the background so open feels instant. Abandon if a
-    // newer session supersedes this one (stale thumbs would paint the wrong ring).
-    let app2 = app.clone();
-    std::thread::spawn(move || {
-        for it in items {
+    // Capture thumbnails in PARALLEL so all previews land in roughly one
+    // capture-time instead of N sequential captures (which took seconds). The
+    // focused card is queued first so it sharpens almost immediately. Each
+    // worker abandons if a newer session supersedes this one.
+    let mut order: VecDeque<SwitcherItem> = VecDeque::with_capacity(items.len());
+    order.push_back(items[index].clone());
+    for (i, it) in items.iter().enumerate() {
+        if i != index {
+            order.push_back(it.clone());
+        }
+    }
+    let queue = Arc::new(Mutex::new(order));
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(8);
+    for _ in 0..workers {
+        let app2 = app.clone();
+        let q = queue.clone();
+        std::thread::spawn(move || loop {
             if SWITCHER_GEN.load(Ordering::SeqCst) != generation {
                 return;
             }
+            let next = q.lock().unwrap().pop_front();
+            let Some(it) = next else { return };
             if let Ok(url) = capture::window_thumbnail_data_url(it.id as isize, THUMB_MAX_PX) {
                 if SWITCHER_GEN.load(Ordering::SeqCst) != generation {
                     return;
@@ -261,8 +279,8 @@ fn open_session(app: &AppHandle, dir: i32) {
                 }
                 let _ = app2.emit_to("switcher", "switcher:thumb", Thumb { id: it.id, thumb: url });
             }
-        }
-    });
+        });
+    }
 }
 
 #[cfg(test)]

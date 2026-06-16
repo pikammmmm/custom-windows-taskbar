@@ -72,8 +72,9 @@ fn window_thumbnail_bytes(hwnd: isize, max_px: u32) -> Result<Vec<u8>> {
         let img = image::RgbaImage::from_raw(cw, ch, rgba)
             .ok_or_else(|| anyhow!("from_raw failed"))?;
         let (tw, th) = fit(cw, ch, max_px);
-        // Lanczos3 keeps text/edges crisp when downscaling a large window.
-        let scaled = image::imageops::resize(&img, tw, th, image::imageops::FilterType::Lanczos3);
+        // CatmullRom: nearly as crisp as Lanczos3 but meaningfully faster, so
+        // parallel captures finish quickly.
+        let scaled = image::imageops::resize(&img, tw, th, image::imageops::FilterType::CatmullRom);
         // JPEG (q88): far smaller than PNG for screenshots, so we can afford a
         // much higher capture resolution for the same IPC payload. Window
         // content is opaque, so dropping alpha is fine.
