@@ -61,6 +61,7 @@ windows = { version = "0.58", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Variant",
   "Storage_Streams",
+  "Win32_Storage_Xps",
 ] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"
