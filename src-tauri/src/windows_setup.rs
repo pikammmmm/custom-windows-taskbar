@@ -136,12 +136,12 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     // and SetWindowRgn is one-shot per dimensions. CSS border-radius on the
     // menu card handles visual rounding instead.
 
-    // 3D ring Alt+Tab switcher overlay. Fullscreen, transparent, topmost.
-    // Navigation is driven by the global keyboard hook, but the overlay DOES
-    // take focus on show (set_focus in show_switcher_overlay) — that's what
-    // lets the commit's SetForegroundWindow succeed (Win11 blocks foreground
-    // changes from a process that doesn't own the foreground). The MRU anchor
-    // + window list are captured BEFORE show, so stealing focus is harmless.
+    // 3D ring Alt+Tab switcher overlay. Fullscreen, transparent, topmost, and
+    // NON-ACTIVATING. It must NOT take the foreground: if it does, Windows shows
+    // its own Alt+Tab switcher when Alt is held (even though we swallow Tab).
+    // Navigation is driven entirely by the global keyboard hook; on commit we
+    // foreground the chosen window via win32::force_foreground (which borrows
+    // the foreground thread's privilege), so the overlay never needs focus.
     // No apply_glass/clip_to_rounded — it's fullscreen and draws its own dim
     // scrim + ring in WebGL, and needs per-pixel alpha (not layered uniform
     // alpha) so the desktop shows through cleanly.
@@ -159,8 +159,7 @@ pub fn create_windows(app: &mut App) -> Result<()> {
         .visible(false)
         .build()?;
     force_webview_transparent(&switcher);
-    // NOT apply_noactivate — the overlay needs to own the foreground so commit
-    // can SetForegroundWindow the chosen window.
+    apply_noactivate(&switcher); // never take foreground — commit uses force_foreground
 
     Ok(())
 }
