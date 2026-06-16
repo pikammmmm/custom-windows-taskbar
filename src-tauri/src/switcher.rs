@@ -53,6 +53,7 @@ pub struct SwitcherItem {
 struct Session {
     items: Vec<SwitcherItem>,
     index: usize,
+    anchor: isize, // foreground window when the session opened (for Esc-cancel)
 }
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
@@ -98,10 +99,15 @@ fn run(app: AppHandle) {
         }
 
         if keyhook::take_switcher_cancel() {
-            crate::glog!("[sw-loop] cancel");
+            let anchor = SESSION.lock().unwrap().as_ref().map(|s| s.anchor);
+            crate::glog!("[sw-loop] cancel anchor={anchor:?}");
             commands::hide_switcher_overlay(&app);
             *SESSION.lock().unwrap() = None;
             keyhook::reset_switcher_session();
+            // Return focus to where the user was before opening the ring.
+            if let Some(a) = anchor {
+                focus_after_delay(a);
+            }
         }
 
         if keyhook::take_switcher_commit() {
@@ -252,7 +258,7 @@ fn open_session(app: &AppHandle, dir: i32) {
         }
     }
 
-    *SESSION.lock().unwrap() = Some(Session { items: items.clone(), index });
+    *SESSION.lock().unwrap() = Some(Session { items: items.clone(), index, anchor });
 
     // Stream thumbnails in the background so open feels instant. Abandon if a
     // newer session supersedes this one (stale thumbs would paint the wrong ring).

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability set for all glassbar windows",
-  "windows": ["dock", "hud", "menu", "spotlight"],
+  "windows": ["dock", "hud", "menu", "spotlight", "switcher"],
   "permissions": [
     "core:default",
     "core:window:allow-outer-position",
