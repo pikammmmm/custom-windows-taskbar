@@ -461,6 +461,10 @@ pub fn show_switcher_overlay(app: &AppHandle, anchor_hwnd: isize) -> Result<(), 
     win.set_size(PhysicalSize::new(w as u32, h as u32)).map_err(|e| e.to_string())?;
     win.show().map_err(|e| e.to_string())?;
     win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    // Take focus so glassbar owns the foreground — required for the commit's
+    // SetForegroundWindow(target) to be allowed by Win11. The anchor + window
+    // list were captured before this call, so stealing focus is safe.
+    let _ = win.set_focus();
     if let Ok(hwnd) = win.hwnd() {
         let hh = hwnd.0 as isize;
         crate::dwm::strip_decorations(hh);
