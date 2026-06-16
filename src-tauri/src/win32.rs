@@ -215,6 +215,33 @@ pub fn foreground_hwnd() -> isize {
     unsafe { GetForegroundWindow().0 as isize }
 }
 
+/// True if the window is minimized.
+pub fn is_iconic(hwnd: isize) -> bool {
+    unsafe { IsIconic(HWND(hwnd as *mut _)).as_bool() }
+}
+
+/// Full bounds (x, y, width, height) of the monitor containing `hwnd`.
+/// Falls back to a 1080p origin if anything fails. Used to center the
+/// switcher overlay on the monitor that holds the active window.
+pub fn monitor_rect_for_hwnd(hwnd: isize) -> (i32, i32, i32, i32) {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    unsafe {
+        let mon = MonitorFromWindow(HWND(hwnd as *mut _), MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(mon, &mut mi).as_bool() {
+            let r = mi.rcMonitor;
+            (r.left, r.top, r.right - r.left, r.bottom - r.top)
+        } else {
+            (0, 0, 1920, 1080)
+        }
+    }
+}
+
 /// Extension that hides the console window of a spawned child process —
 /// `Command::new("powershell")` etc. flashes a black box on screen by
 /// default on Windows because the child inherits a fresh console. Setting
