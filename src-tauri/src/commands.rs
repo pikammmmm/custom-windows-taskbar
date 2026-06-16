@@ -495,6 +495,13 @@ pub fn switcher_commit(app: AppHandle, index: usize) {
     crate::switcher::commit_index(&app, index);
 }
 
+/// Diagnostic: let the switcher webview append to the glassbar debug log so
+/// we can see the JS receive/render side from the same file as the Rust side.
+#[tauri::command]
+pub fn switcher_log(msg: String) {
+    crate::glog!("[sw-js] {msg}");
+}
+
 /// Pin a batch of dropped paths (from a window file-drop). Resolves
 /// `.lnk` to the target exe; silently skips anything that isn't a
 /// launchable .exe / .lnk so the user gets no surprise from dragging

@@ -69,6 +69,7 @@ pub fn spawn(app: AppHandle) {
 }
 
 fn run(app: AppHandle) {
+    crate::glog!("[sw-loop] started");
     loop {
         std::thread::sleep(Duration::from_millis(POLL_MS));
 
@@ -89,18 +90,22 @@ fn run(app: AppHandle) {
                     _ => None,
                 }
             };
+            crate::glog!("[sw-loop] step delta={step} -> index={new:?}");
             if let Some(i) = new {
-                let _ = app.emit_to("switcher", "switcher:select", i);
+                let r = app.emit_to("switcher", "switcher:select", i);
+                crate::glog!("[sw-loop] emit select={i} ok={}", r.is_ok());
             }
         }
 
         if keyhook::take_switcher_cancel() {
+            crate::glog!("[sw-loop] cancel");
             commands::hide_switcher_overlay(&app);
             *SESSION.lock().unwrap() = None;
             keyhook::reset_switcher_session();
         }
 
         if keyhook::take_switcher_commit() {
+            crate::glog!("[sw-loop] commit signal");
             commit_current(&app);
         }
 
@@ -110,6 +115,7 @@ fn run(app: AppHandle) {
         // swallowed globally.
         let stuck = SESSION.lock().unwrap().is_some() && !win32::is_alt_down();
         if stuck {
+            crate::glog!("[sw-loop] watchdog fired (alt no longer down)");
             commit_current(&app);
         }
     }
@@ -151,10 +157,14 @@ pub fn commit_index(app: &AppHandle, index: usize) {
 /// + hook flag, and foreground the chosen window. Shared by the Alt-release
 /// commit, the stuck-session watchdog, and mouse-click commit.
 fn commit_current(app: &AppHandle) {
-    let target = {
+    let (target, idx) = {
         let guard = SESSION.lock().unwrap();
-        guard.as_ref().and_then(|s| s.items.get(s.index)).map(|it| it.id as isize)
+        match guard.as_ref() {
+            Some(s) => (s.items.get(s.index).map(|it| it.id as isize), s.index),
+            None => (None, usize::MAX),
+        }
     };
+    crate::glog!("[sw-loop] commit_current index={idx} target={target:?}");
     commands::hide_switcher_overlay(app);
     *SESSION.lock().unwrap() = None;
     keyhook::reset_switcher_session();
@@ -169,7 +179,8 @@ fn commit_current(app: &AppHandle) {
 fn focus_after_delay(hwnd: isize) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(90));
-        let _ = win32::focus_aggressive(hwnd);
+        let r = win32::focus_aggressive(hwnd);
+        crate::glog!("[sw-loop] focus_aggressive hwnd={hwnd:#x} ok={}", r.is_ok());
     });
 }
 
@@ -208,23 +219,30 @@ fn open_session(app: &AppHandle, dir: i32) {
     // isn't guaranteed first once filtering drops windows. If the anchor was
     // filtered out, we can't assume a "previous" — select the top window.
     let ids: Vec<i64> = items.iter().map(|it| it.id).collect();
-    let index = match anchor_rotation(&ids, anchor as i64) {
+    let anchor_pos = anchor_rotation(&ids, anchor as i64);
+    let index = match anchor_pos {
         Some(pos) => {
             items.rotate_left(pos);
             initial_index(dir, items.len())
         }
         None => 0,
     };
+    crate::glog!(
+        "[sw-loop] open dir={dir} windows={} anchor={:#x} anchor_pos={anchor_pos:?} index={index}",
+        items.len(), anchor
+    );
 
     let generation = SWITCHER_GEN.fetch_add(1, Ordering::SeqCst) + 1;
 
-    if commands::show_switcher_overlay(app, anchor).is_err() {
+    if let Err(e) = commands::show_switcher_overlay(app, anchor) {
+        crate::glog!("[sw-loop] show_switcher_overlay FAILED: {e}");
         keyhook::reset_switcher_session();
         return;
     }
 
     let payload = OpenPayload { windows: items.clone(), selected: index };
-    let _ = app.emit_to("switcher", "switcher:open", payload.clone());
+    let r = app.emit_to("switcher", "switcher:open", payload.clone());
+    crate::glog!("[sw-loop] emit open ok={} (also eval fallback)", r.is_ok());
     // eval fallback: stash on window in case the listener was mid-registration.
     if let Some(win) = app.get_webview_window("switcher") {
         if let Ok(json) = serde_json::to_string(&payload) {
@@ -240,22 +258,32 @@ fn open_session(app: &AppHandle, dir: i32) {
     // newer session supersedes this one (stale thumbs would paint the wrong ring).
     let app2 = app.clone();
     std::thread::spawn(move || {
+        let (mut ok, mut err) = (0u32, 0u32);
         for it in items {
             if SWITCHER_GEN.load(Ordering::SeqCst) != generation {
                 return;
             }
-            if let Ok(url) = capture::window_thumbnail_data_url(it.id as isize, THUMB_MAX_PX) {
-                if SWITCHER_GEN.load(Ordering::SeqCst) != generation {
-                    return;
+            match capture::window_thumbnail_data_url(it.id as isize, THUMB_MAX_PX) {
+                Ok(url) => {
+                    ok += 1;
+                    if SWITCHER_GEN.load(Ordering::SeqCst) != generation {
+                        return;
+                    }
+                    #[derive(Serialize, Clone)]
+                    struct Thumb {
+                        id: i64,
+                        thumb: String,
+                    }
+                    let r = app2.emit_to("switcher", "switcher:thumb", Thumb { id: it.id, thumb: url });
+                    crate::glog!("[sw-cap] hwnd={:#x} captured bytes-ok emit_ok={}", it.id, r.is_ok());
                 }
-                #[derive(Serialize, Clone)]
-                struct Thumb {
-                    id: i64,
-                    thumb: String,
+                Err(e) => {
+                    err += 1;
+                    crate::glog!("[sw-cap] hwnd={:#x} capture FAILED: {e}", it.id);
                 }
-                let _ = app2.emit_to("switcher", "switcher:thumb", Thumb { id: it.id, thumb: url });
             }
         }
+        crate::glog!("[sw-cap] done: {ok} captured, {err} failed");
     });
 }
 
