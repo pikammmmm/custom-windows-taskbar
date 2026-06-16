@@ -115,8 +115,9 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
         {
             let alt = (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
             let shift = (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
+            let ctrl = (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
             let active = SWITCHER_ACTIVE.load(Ordering::SeqCst);
-            let (action, swallow) = classify_switcher(msg, vk, alt, shift, active);
+            let (action, swallow) = classify_switcher(msg, vk, alt, shift, ctrl, active);
             match action {
                 SwitcherAction::Open(d) => {
                     SWITCHER_ACTIVE.store(true, Ordering::SeqCst);
@@ -282,10 +283,17 @@ pub fn classify_switcher(
     vk: u32,
     alt_down: bool,
     shift_down: bool,
+    ctrl_down: bool,
     active: bool,
 ) -> (SwitcherAction, bool) {
     let is_down = msg == WM_KEYDOWN_U || msg == WM_SYSKEYDOWN_U;
     let is_up = msg == WM_KEYUP_U || msg == WM_SYSKEYUP_U;
+
+    // Never own a Ctrl-modified chord — Ctrl+Alt+Tab (OS persistent switcher)
+    // and other Ctrl+Alt+* combos must reach the OS / focused app.
+    if ctrl_down {
+        return (SwitcherAction::None, false);
+    }
 
     if is_down && vk == VK_TAB && alt_down {
         let dir = if shift_down { -1 } else { 1 };
@@ -312,7 +320,7 @@ mod switcher_tests {
     #[test]
     fn alt_tab_when_idle_opens_forward_and_swallows() {
         assert_eq!(
-            classify_switcher(WM_KEYDOWN_U, VK_TAB, true, false, false),
+            classify_switcher(WM_KEYDOWN_U, VK_TAB, true, false, false, false),
             (SwitcherAction::Open(1), true)
         );
     }
@@ -320,7 +328,7 @@ mod switcher_tests {
     #[test]
     fn alt_shift_tab_when_idle_opens_reverse() {
         assert_eq!(
-            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, true, false),
+            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, true, false, false),
             (SwitcherAction::Open(-1), true)
         );
     }
@@ -328,7 +336,7 @@ mod switcher_tests {
     #[test]
     fn alt_tab_when_active_steps_forward() {
         assert_eq!(
-            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, false, true),
+            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, false, false, true),
             (SwitcherAction::Step(1), true)
         );
     }
@@ -336,7 +344,21 @@ mod switcher_tests {
     #[test]
     fn tab_without_alt_is_ignored_and_passes() {
         assert_eq!(
-            classify_switcher(WM_KEYDOWN_U, VK_TAB, false, false, false),
+            classify_switcher(WM_KEYDOWN_U, VK_TAB, false, false, false, false),
+            (SwitcherAction::None, false)
+        );
+    }
+
+    #[test]
+    fn ctrl_alt_tab_is_not_owned() {
+        // Ctrl+Alt+Tab must reach the OS persistent switcher, not ours.
+        assert_eq!(
+            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, false, true, false),
+            (SwitcherAction::None, false)
+        );
+        // Even mid-session, a Ctrl-modified chord passes through.
+        assert_eq!(
+            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, false, true, true),
             (SwitcherAction::None, false)
         );
     }
@@ -344,7 +366,7 @@ mod switcher_tests {
     #[test]
     fn escape_while_active_cancels_and_swallows() {
         assert_eq!(
-            classify_switcher(WM_KEYDOWN_U, VK_ESCAPE, true, false, true),
+            classify_switcher(WM_KEYDOWN_U, VK_ESCAPE, true, false, false, true),
             (SwitcherAction::Cancel, true)
         );
     }
@@ -352,7 +374,7 @@ mod switcher_tests {
     #[test]
     fn escape_while_idle_is_ignored() {
         assert_eq!(
-            classify_switcher(WM_KEYDOWN_U, VK_ESCAPE, false, false, false),
+            classify_switcher(WM_KEYDOWN_U, VK_ESCAPE, false, false, false, false),
             (SwitcherAction::None, false)
         );
     }
@@ -360,7 +382,7 @@ mod switcher_tests {
     #[test]
     fn alt_release_while_active_commits_without_swallow() {
         assert_eq!(
-            classify_switcher(WM_KEYUP_U, 0xA4, false, false, true),
+            classify_switcher(WM_KEYUP_U, 0xA4, false, false, false, true),
             (SwitcherAction::Commit, false)
         );
     }
@@ -368,7 +390,7 @@ mod switcher_tests {
     #[test]
     fn alt_release_while_idle_is_ignored() {
         assert_eq!(
-            classify_switcher(WM_SYSKEYUP_U, 0x12, false, false, false),
+            classify_switcher(WM_SYSKEYUP_U, 0x12, false, false, false, false),
             (SwitcherAction::None, false)
         );
     }
