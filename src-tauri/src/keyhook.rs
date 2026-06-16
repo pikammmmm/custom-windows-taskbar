@@ -1,8 +1,8 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-    VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SPACE,
+    VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_SPACE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
@@ -26,6 +26,13 @@ static SPOTLIGHT_REQUESTED: AtomicBool = AtomicBool::new(false);
 static CLIPBOARD_REQUESTED: AtomicBool = AtomicBool::new(false);
 static POWER_MENU_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+// ── 3D ring Alt+Tab switcher session signals ─────────────────────────────
+static SWITCHER_OPEN: AtomicI32 = AtomicI32::new(0); // 0 none / +1 fwd / -1 rev
+static SWITCHER_STEP: AtomicI32 = AtomicI32::new(0); // net rotation delta
+static SWITCHER_COMMIT: AtomicBool = AtomicBool::new(false);
+static SWITCHER_CANCEL: AtomicBool = AtomicBool::new(false);
+static SWITCHER_ACTIVE: AtomicBool = AtomicBool::new(false); // session in progress
+
 const LLKHF_INJECTED: u32 = 0x10;
 
 /// Returns and clears the pending toggle request — call from the dock
@@ -48,6 +55,18 @@ pub fn take_clipboard_request() -> bool {
 pub fn take_power_menu_request() -> bool {
     POWER_MENU_REQUESTED.swap(false, Ordering::AcqRel)
 }
+
+/// Consume a pending switcher-open request: 0 (none), +1 (forward), -1 (reverse).
+pub fn take_switcher_open() -> i32 { SWITCHER_OPEN.swap(0, Ordering::AcqRel) }
+/// Consume and reset the net rotation delta since the last poll.
+pub fn take_switcher_step() -> i32 { SWITCHER_STEP.swap(0, Ordering::AcqRel) }
+/// Consume a pending commit (Alt released while the ring was open).
+pub fn take_switcher_commit() -> bool { SWITCHER_COMMIT.swap(false, Ordering::AcqRel) }
+/// Consume a pending cancel (Esc while the ring was open).
+pub fn take_switcher_cancel() -> bool { SWITCHER_CANCEL.swap(false, Ordering::AcqRel) }
+/// Force the hook session flag off — called by the consumer when it declines
+/// to open (e.g. zero eligible windows) so Tab/Esc stop being swallowed.
+pub fn reset_switcher_session() { SWITCHER_ACTIVE.store(false, Ordering::SeqCst); }
 
 /// Spawn a dedicated thread that installs a low-level keyboard hook + runs
 /// its own message loop. The hook turns a "Win-alone" tap into a dock-toggle
@@ -88,6 +107,37 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
     let is_win = vk == VK_LWIN.0 as u32 || vk == VK_RWIN.0 as u32;
 
     if !injected {
+        // ── 3D ring Alt+Tab switcher ──────────────────────────────────────
+        // Runs before the Win-key chord logic. classify_switcher inspects the
+        // raw event; on a swallow it returns LRESULT(1) so the OS never sees
+        // Alt+Tab and never shows its own switcher. Navigation is entirely
+        // hook-driven — the overlay webview is a pure renderer.
+        {
+            let alt = (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
+            let shift = (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
+            let active = SWITCHER_ACTIVE.load(Ordering::SeqCst);
+            let (action, swallow) = classify_switcher(msg, vk, alt, shift, active);
+            match action {
+                SwitcherAction::Open(d) => {
+                    SWITCHER_ACTIVE.store(true, Ordering::SeqCst);
+                    SWITCHER_OPEN.store(d, Ordering::SeqCst);
+                }
+                SwitcherAction::Step(d) => { SWITCHER_STEP.fetch_add(d, Ordering::SeqCst); }
+                SwitcherAction::Commit => {
+                    SWITCHER_ACTIVE.store(false, Ordering::SeqCst);
+                    SWITCHER_COMMIT.store(true, Ordering::SeqCst);
+                }
+                SwitcherAction::Cancel => {
+                    SWITCHER_ACTIVE.store(false, Ordering::SeqCst);
+                    SWITCHER_CANCEL.store(true, Ordering::SeqCst);
+                }
+                SwitcherAction::None => {}
+            }
+            if swallow {
+                return LRESULT(1);
+            }
+        }
+
         match msg {
             x if x == WM_KEYDOWN || x == WM_SYSKEYDOWN => {
                 if is_win {
@@ -198,5 +248,128 @@ fn kb_event(vk: u16, key_up: bool) -> INPUT {
                 dwExtraInfo: 0,
             },
         },
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Alt+Tab ring-switcher chord classification (pure; unit-tested).
+// ─────────────────────────────────────────────────────────────────────────
+
+const VK_TAB: u32 = 0x09;
+const VK_ESCAPE: u32 = 0x1B;
+// Low-level hook reports the specific Alt key; cover plain + L/R.
+const VK_MENU_ANY: [u32; 3] = [0x12 /*VK_MENU*/, 0xA4 /*VK_LMENU*/, 0xA5 /*VK_RMENU*/];
+
+const WM_KEYDOWN_U: u32 = 0x0100;
+const WM_KEYUP_U: u32 = 0x0101;
+const WM_SYSKEYDOWN_U: u32 = 0x0104;
+const WM_SYSKEYUP_U: u32 = 0x0105;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwitcherAction {
+    None,
+    Open(i32), // +1 forward, -1 reverse
+    Step(i32),
+    Commit,
+    Cancel,
+}
+
+/// Decide what an incoming key event means for the switcher.
+/// Returns the action and whether the key should be swallowed (LRESULT(1)).
+/// `active` = a switcher session is currently open (hook-private flag).
+pub fn classify_switcher(
+    msg: u32,
+    vk: u32,
+    alt_down: bool,
+    shift_down: bool,
+    active: bool,
+) -> (SwitcherAction, bool) {
+    let is_down = msg == WM_KEYDOWN_U || msg == WM_SYSKEYDOWN_U;
+    let is_up = msg == WM_KEYUP_U || msg == WM_SYSKEYUP_U;
+
+    if is_down && vk == VK_TAB && alt_down {
+        let dir = if shift_down { -1 } else { 1 };
+        return if active {
+            (SwitcherAction::Step(dir), true)
+        } else {
+            (SwitcherAction::Open(dir), true)
+        };
+    }
+    if is_down && vk == VK_ESCAPE && active {
+        return (SwitcherAction::Cancel, true);
+    }
+    if is_up && VK_MENU_ANY.contains(&vk) && active {
+        // Don't swallow Alt-up; apps may rely on seeing it.
+        return (SwitcherAction::Commit, false);
+    }
+    (SwitcherAction::None, false)
+}
+
+#[cfg(test)]
+mod switcher_tests {
+    use super::*;
+
+    #[test]
+    fn alt_tab_when_idle_opens_forward_and_swallows() {
+        assert_eq!(
+            classify_switcher(WM_KEYDOWN_U, VK_TAB, true, false, false),
+            (SwitcherAction::Open(1), true)
+        );
+    }
+
+    #[test]
+    fn alt_shift_tab_when_idle_opens_reverse() {
+        assert_eq!(
+            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, true, false),
+            (SwitcherAction::Open(-1), true)
+        );
+    }
+
+    #[test]
+    fn alt_tab_when_active_steps_forward() {
+        assert_eq!(
+            classify_switcher(WM_SYSKEYDOWN_U, VK_TAB, true, false, true),
+            (SwitcherAction::Step(1), true)
+        );
+    }
+
+    #[test]
+    fn tab_without_alt_is_ignored_and_passes() {
+        assert_eq!(
+            classify_switcher(WM_KEYDOWN_U, VK_TAB, false, false, false),
+            (SwitcherAction::None, false)
+        );
+    }
+
+    #[test]
+    fn escape_while_active_cancels_and_swallows() {
+        assert_eq!(
+            classify_switcher(WM_KEYDOWN_U, VK_ESCAPE, true, false, true),
+            (SwitcherAction::Cancel, true)
+        );
+    }
+
+    #[test]
+    fn escape_while_idle_is_ignored() {
+        assert_eq!(
+            classify_switcher(WM_KEYDOWN_U, VK_ESCAPE, false, false, false),
+            (SwitcherAction::None, false)
+        );
+    }
+
+    #[test]
+    fn alt_release_while_active_commits_without_swallow() {
+        assert_eq!(
+            classify_switcher(WM_KEYUP_U, 0xA4, false, false, true),
+            (SwitcherAction::Commit, false)
+        );
+    }
+
+    #[test]
+    fn alt_release_while_idle_is_ignored() {
+        assert_eq!(
+            classify_switcher(WM_SYSKEYUP_U, 0x12, false, false, false),
+            (SwitcherAction::None, false)
+        );
     }
 }
