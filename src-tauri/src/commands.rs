@@ -472,16 +472,21 @@ pub fn show_switcher_overlay(app: &AppHandle, anchor_hwnd: isize) -> Result<(), 
 
 /// Hide the switcher overlay. Safe to call when it's already hidden/missing.
 pub fn hide_switcher_overlay(app: &AppHandle) {
+    // Tell the overlay to stop its render loop + clear visuals before hiding.
+    // SW_HIDE does not reliably fire the webview's visibilitychange, so signal
+    // explicitly (event + eval fallback for the cold-listener race).
+    let _ = app.emit_to("switcher", "switcher:close", ());
     if let Some(win) = app.get_webview_window("switcher") {
+        let _ = win.eval("window.__switcherClose && window.__switcherClose();");
         let _ = win.hide();
     }
 }
 
 /// Mouse hover/scroll in the ring → keep Rust's authoritative selection in
-/// sync so an Alt-release commits the hovered window.
+/// sync (and echo it back) so an Alt-release commits the hovered window.
 #[tauri::command]
-pub fn switcher_set_index(index: usize) {
-    crate::switcher::set_index(index);
+pub fn switcher_set_index(app: AppHandle, index: usize) {
+    crate::switcher::set_index(&app, index);
 }
 
 /// Mouse click on a ring card → commit and focus that window.

@@ -103,6 +103,12 @@ unsafe fn capture_into_dib(
     let dib: HBITMAP =
         CreateDIBSection(screen_dc, &bmi, DIB_RGB_COLORS, &mut bits, HANDLE(std::ptr::null_mut()), 0)?;
     if dib.is_invalid() || bits.is_null() {
+        // CreateDIBSection can (pathologically) return a valid handle with null
+        // bits. The `?` above only catches the null-handle case, so free a
+        // valid-but-unusable DIB here to avoid a GDI handle leak.
+        if !dib.is_invalid() {
+            let _ = DeleteObject(HGDIOBJ(dib.0 as *mut _));
+        }
         return Err(anyhow!("CreateDIBSection failed"));
     }
     let prev = SelectObject(mem_dc, HGDIOBJ(dib.0 as *mut _));

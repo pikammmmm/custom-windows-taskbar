@@ -220,6 +220,14 @@ pub fn is_iconic(hwnd: isize) -> bool {
     unsafe { IsIconic(HWND(hwnd as *mut _)).as_bool() }
 }
 
+/// True if either Alt key is physically down right now. The switcher watchdog
+/// uses this to recover from a missed Alt-up (e.g. an elevated foreground
+/// window swallowed the key-up before our non-elevated hook could see it).
+pub fn is_alt_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU};
+    unsafe { (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0 }
+}
+
 /// Full bounds (x, y, width, height) of the monitor containing `hwnd`.
 /// Falls back to a 1080p origin if anything fails. Used to center the
 /// switcher overlay on the monitor that holds the active window.
