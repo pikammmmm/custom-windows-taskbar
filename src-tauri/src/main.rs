@@ -204,7 +204,6 @@ fn main() {
             commands::clipboard_clear,
             commands::switcher_set_index,
             commands::switcher_commit,
-            commands::switcher_log,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;

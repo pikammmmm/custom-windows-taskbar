@@ -34,6 +34,10 @@ static SWITCHER_CANCEL: AtomicBool = AtomicBool::new(false);
 static SWITCHER_ACTIVE: AtomicBool = AtomicBool::new(false); // session in progress
 
 const LLKHF_INJECTED: u32 = 0x10;
+/// Set in KBDLLHOOKSTRUCT.flags when Alt is held for THIS key event. Reading it
+/// is race-free, unlike GetAsyncKeyState which can lag a same-frame Alt+Tab and
+/// let the OS task switcher slip through.
+const LLKHF_ALTDOWN: u32 = 0x20;
 
 /// Returns and clears the pending toggle request — call from the dock
 /// auto-hide loop to consume Win-key tap signals.
@@ -113,17 +117,13 @@ unsafe extern "system" fn callback(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
         // Alt+Tab and never shows its own switcher. Navigation is entirely
         // hook-driven — the overlay webview is a pure renderer.
         {
-            let alt = (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
+            // Alt from the event's own flags (race-free) OR'd with async state.
+            let alt = (kb.flags.0 & LLKHF_ALTDOWN) != 0
+                || (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
             let shift = (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
             let ctrl = (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
             let active = SWITCHER_ACTIVE.load(Ordering::SeqCst);
             let (action, swallow) = classify_switcher(msg, vk, alt, shift, ctrl, active);
-            if !matches!(action, SwitcherAction::None) {
-                crate::glog!(
-                    "[sw-hook] {:?} vk={:#x} msg={:#x} alt={} shift={} ctrl={} active={} swallow={}",
-                    action, vk, msg, alt, shift, ctrl, active, swallow
-                );
-            }
             match action {
                 SwitcherAction::Open(d) => {
                     SWITCHER_ACTIVE.store(true, Ordering::SeqCst);

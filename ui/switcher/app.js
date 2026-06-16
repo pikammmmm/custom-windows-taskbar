@@ -4,9 +4,6 @@ import { ringTransform, ringRadius } from './ring.js';
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
-const slog = (m) => { try { invoke('switcher_log', { msg: String(m) }); } catch (_) {} };
-slog('app.js module load start');
-
 const canvas = document.getElementById('ring');
 const scrim = document.getElementById('scrim');
 const labelEl = document.getElementById('label');
@@ -124,7 +121,6 @@ function frameRing() {
 }
 
 window.__switcherApply = (payload) => {
-  slog('apply: windows=' + (payload && payload.windows ? payload.windows.length : 'none') + ' selected=' + (payload ? payload.selected : '?'));
   if (!payload || !Array.isArray(payload.windows)) return;
   clearCards();
   cards = payload.windows.map(makeCard);
@@ -164,6 +160,11 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// Card texture canvas — matches the plane aspect (CARD_W:CARD_H = 1.6:1) so
+// images map without distortion. Rounded corners come from clipping the canvas
+// to a rounded rect (the corners stay transparent and the scrim shows through).
+const CARD_PX_W = 512, CARD_PX_H = 320, CARD_PX_R = 34;
+
 function setTexture(card, url, isIcon) {
   const rank = isIcon ? 1 : 2;
   if (rank < card.textureRank) return; // don't start a downgrade
@@ -174,24 +175,38 @@ function setTexture(card, url, isIcon) {
     assignTexture(card, tex);
     card.textureRank = rank;
   };
-  if (isIcon) {
-    // Composite the square icon centered on a dark card so it isn't stretched.
-    const img = new Image();
-    img.onload = () => {
-      const cv = document.createElement('canvas');
-      cv.width = 320; cv.height = 200;
-      const ctx = cv.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    const cv = document.createElement('canvas');
+    cv.width = CARD_PX_W; cv.height = CARD_PX_H;
+    const ctx = cv.getContext('2d');
+    if (isIcon) {
+      // App-icon fallback: icon centered on a dark rounded card.
+      roundRect(ctx, 0, 0, CARD_PX_W, CARD_PX_H, CARD_PX_R);
       ctx.fillStyle = '#1c2230';
-      roundRect(ctx, 0, 0, cv.width, cv.height, 16);
       ctx.fill();
-      const s = 96;
-      ctx.drawImage(img, (cv.width - s) / 2, (cv.height - s) / 2 - 6, s, s);
-      apply(new THREE.CanvasTexture(cv));
-    };
-    img.src = url;
-  } else {
-    loader.load(url, apply);
-  }
+      const s = 150;
+      ctx.drawImage(img, (CARD_PX_W - s) / 2, (CARD_PX_H - s) / 2, s, s);
+    } else {
+      // Window snapshot: dark rounded card, whole window contain-fit (no crop),
+      // clipped to the rounded rect so corners are clean.
+      roundRect(ctx, 0, 0, CARD_PX_W, CARD_PX_H, CARD_PX_R);
+      ctx.fillStyle = '#0e1118';
+      ctx.fill();
+      ctx.save();
+      roundRect(ctx, 0, 0, CARD_PX_W, CARD_PX_H, CARD_PX_R);
+      ctx.clip();
+      const ir = img.width / img.height;
+      const cr = CARD_PX_W / CARD_PX_H;
+      let dw, dh;
+      if (ir > cr) { dw = CARD_PX_W; dh = CARD_PX_W / ir; }
+      else { dh = CARD_PX_H; dw = CARD_PX_H * ir; }
+      ctx.drawImage(img, (CARD_PX_W - dw) / 2, (CARD_PX_H - dh) / 2, dw, dh);
+      ctx.restore();
+    }
+    apply(new THREE.CanvasTexture(cv));
+  };
+  img.src = url;
 }
 
 // ── Render loop (eases every card toward its live target each frame) ──────
@@ -272,14 +287,12 @@ window.addEventListener('click', (ev) => {
 async function init() {
   await listen('switcher:open', (e) => window.__switcherApply(e.payload));
   await listen('switcher:select', (e) => {
-    slog('recv select ' + e.payload);
     selected = e.payload | 0;
     updateLabel();
   });
   await listen('switcher:thumb', (e) => {
     const { id, thumb } = e.payload || {};
     const card = cards.find((c) => c.id === id);
-    slog('recv thumb id=' + id + ' card=' + !!card);
     if (card && thumb) setTexture(card, thumb, /*isIcon*/ false);
   });
   await listen('switcher:close', () => window.__switcherClose());
@@ -287,7 +300,6 @@ async function init() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) window.__switcherClose();
   });
-  slog('init: listeners registered');
   // Apply any payload that arrived (via eval) before listeners registered.
   if (window.__switcherPending) window.__switcherApply(window.__switcherPending);
 }
