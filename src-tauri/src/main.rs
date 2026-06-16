@@ -202,6 +202,8 @@ fn main() {
             commands::hide_clipboard,
             commands::clipboard_use_entry,
             commands::clipboard_clear,
+            commands::switcher_set_index,
+            commands::switcher_commit,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
