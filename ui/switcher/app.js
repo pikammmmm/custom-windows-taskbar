@@ -61,7 +61,9 @@ function makeCard(item) {
   reflection.scale.y = -1;
   scene.add(reflection);
 
-  return { mesh, reflection, id: item.id, item };
+  // textureRank: 0=placeholder, 1=icon, 2=thumbnail. A lower rank must never
+  // overwrite a higher one, so a late-resolving icon can't clobber a thumb.
+  return { mesh, reflection, id: item.id, item, textureRank: 0 };
 }
 
 function clearCards() {
@@ -159,6 +161,15 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function setTexture(card, url, isIcon) {
+  const rank = isIcon ? 1 : 2;
+  if (rank < card.textureRank) return; // don't start a downgrade
+  const apply = (tex) => {
+    // Re-check at completion: a thumbnail may have landed while we decoded.
+    if (rank < card.textureRank) { if (tex.dispose) tex.dispose(); return; }
+    tex.colorSpace = THREE.SRGBColorSpace;
+    assignTexture(card, tex);
+    card.textureRank = rank;
+  };
   if (isIcon) {
     // Composite the square icon centered on a dark card so it isn't stretched.
     const img = new Image();
@@ -171,16 +182,11 @@ function setTexture(card, url, isIcon) {
       ctx.fill();
       const s = 96;
       ctx.drawImage(img, (cv.width - s) / 2, (cv.height - s) / 2 - 6, s, s);
-      const tex = new THREE.CanvasTexture(cv);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      assignTexture(card, tex);
+      apply(new THREE.CanvasTexture(cv));
     };
     img.src = url;
   } else {
-    loader.load(url, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      assignTexture(card, tex);
-    });
+    loader.load(url, apply);
   }
 }
 
@@ -215,6 +221,14 @@ function startLoop() {
 }
 function stopLoop() { rafRunning = false; }
 
+// Called by Rust (event + eval) when the overlay hides — SW_HIDE doesn't
+// reliably fire visibilitychange, so stop the loop + clear visuals here.
+window.__switcherClose = () => {
+  stopLoop();
+  scrim.classList.remove('show');
+  labelEl.classList.remove('show');
+};
+
 // ── Mouse: hover-to-select, scroll-to-spin, click-to-commit ───────────────
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -228,22 +242,21 @@ function pickIndex(ev) {
   return cards.findIndex((c) => c.mesh === hits[0].object);
 }
 
+// Mouse only requests a selection change; Rust echoes switcher:select back and
+// THAT updates `selected` (single source of truth — no local mutation here).
 window.addEventListener('mousemove', (ev) => {
   if (!cards.length) return;
   const i = pickIndex(ev);
   if (i >= 0 && i !== selected) {
-    selected = i;
-    updateLabel();
-    invoke('switcher_set_index', { index: selected }).catch(() => {});
+    invoke('switcher_set_index', { index: i }).catch(() => {});
   }
 });
 
 window.addEventListener('wheel', (ev) => {
   if (!cards.length) return;
   const dir = ev.deltaY > 0 ? 1 : -1;
-  selected = (selected + dir + cards.length) % cards.length;
-  updateLabel();
-  invoke('switcher_set_index', { index: selected }).catch(() => {});
+  const next = (selected + dir + cards.length) % cards.length;
+  invoke('switcher_set_index', { index: next }).catch(() => {});
 }, { passive: true });
 
 window.addEventListener('click', (ev) => {
@@ -263,13 +276,10 @@ async function init() {
     const card = cards.find((c) => c.id === id);
     if (card && thumb) setTexture(card, thumb, /*isIcon*/ false);
   });
-  // Save GPU while hidden; also clear visuals so the next open starts fresh.
+  await listen('switcher:close', () => window.__switcherClose());
+  // Backup path: stop the loop if the webview ever does report hidden.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      stopLoop();
-      scrim.classList.remove('show');
-      labelEl.classList.remove('show');
-    }
+    if (document.hidden) window.__switcherClose();
   });
   // Apply any payload that arrived (via eval) before listeners registered.
   if (window.__switcherPending) window.__switcherApply(window.__switcherPending);
