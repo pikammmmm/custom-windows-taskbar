@@ -477,6 +477,19 @@ pub fn hide_switcher_overlay(app: &AppHandle) {
     }
 }
 
+/// Mouse hover/scroll in the ring → keep Rust's authoritative selection in
+/// sync so an Alt-release commits the hovered window.
+#[tauri::command]
+pub fn switcher_set_index(index: usize) {
+    crate::switcher::set_index(index);
+}
+
+/// Mouse click on a ring card → commit and focus that window.
+#[tauri::command]
+pub fn switcher_commit(app: AppHandle, index: usize) {
+    crate::switcher::commit_index(&app, index);
+}
+
 /// Pin a batch of dropped paths (from a window file-drop). Resolves
 /// `.lnk` to the target exe; silently skips anything that isn't a
 /// launchable .exe / .lnk so the user gets no surprise from dragging
