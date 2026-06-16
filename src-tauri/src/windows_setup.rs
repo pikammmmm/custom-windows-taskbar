@@ -136,6 +136,29 @@ pub fn create_windows(app: &mut App) -> Result<()> {
     // and SetWindowRgn is one-shot per dimensions. CSS border-radius on the
     // menu card handles visual rounding instead.
 
+    // 3D ring Alt+Tab switcher overlay. Fullscreen, transparent, topmost, and
+    // NON-ACTIVATING: all navigation comes from the global keyboard hook, so the
+    // overlay must never steal foreground from the window we're about to switch
+    // to. Sized/positioned to the active monitor at show-time (commands.rs).
+    // No apply_glass/clip_to_rounded — it's fullscreen and draws its own dim
+    // scrim + ring in WebGL, and needs per-pixel alpha (not layered uniform
+    // alpha) so the desktop shows through cleanly.
+    let switcher = WebviewWindowBuilder::new(app, "switcher", WebviewUrl::App("switcher/index.html".into()))
+        .title("")
+        .inner_size(1280.0, 720.0)
+        .position(0.0, 0.0)
+        .decorations(false)
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .shadow(false)
+        .visible(false)
+        .build()?;
+    force_webview_transparent(&switcher);
+    apply_noactivate(&switcher); // do NOT take focus — hook drives navigation
+
     Ok(())
 }
 
