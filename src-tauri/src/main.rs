@@ -18,6 +18,8 @@ mod import_pinned;
 mod shell_taskbar;
 mod dock_autohide;
 mod keyhook;
+mod switcher;
+mod capture;
 mod app_actions;
 mod stash;
 mod wndproc;
