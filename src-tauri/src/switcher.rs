@@ -61,7 +61,7 @@ static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 /// thread from a superseded session can detect it's stale and stop emitting.
 static SWITCHER_GEN: AtomicU64 = AtomicU64::new(0);
 
-const THUMB_MAX_PX: u32 = 512;
+const THUMB_MAX_PX: u32 = 1280;
 const POLL_MS: u64 = 8;
 
 /// Spawn the switcher event loop. Mirrors dock_autohide::spawn.
@@ -176,7 +176,6 @@ fn focus_after_delay(hwnd: isize) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(90));
         win32::force_foreground(hwnd);
-        crate::glog!("[sw-loop] force_foreground target={hwnd:#x} now_fg={:#x}", win32::foreground_hwnd());
     });
 }
 
