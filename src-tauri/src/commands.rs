@@ -446,6 +446,37 @@ pub fn hide_spotlight(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Position the 3D ring switcher overlay over the monitor holding
+/// `anchor_hwnd`, show it, re-assert topmost, and re-strip decorations (Win11
+/// re-adds WS_CAPTION between build and paint). Not a #[tauri::command] — the
+/// switcher loop calls it directly. No set_focus(): the overlay is
+/// WS_EX_NOACTIVATE and navigation is hook-driven, so we must keep focus on
+/// the window we're about to switch from.
+pub fn show_switcher_overlay(app: &AppHandle, anchor_hwnd: isize) -> Result<(), String> {
+    let win = app
+        .get_webview_window("switcher")
+        .ok_or_else(|| "switcher window missing".to_string())?;
+    let (x, y, w, h) = crate::win32::monitor_rect_for_hwnd(anchor_hwnd);
+    win.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+    win.set_size(PhysicalSize::new(w as u32, h as u32)).map_err(|e| e.to_string())?;
+    win.show().map_err(|e| e.to_string())?;
+    win.set_always_on_top(true).map_err(|e| e.to_string())?;
+    if let Ok(hwnd) = win.hwnd() {
+        let hh = hwnd.0 as isize;
+        crate::dwm::strip_decorations(hh);
+        crate::dwm::suppress_nc_rendering(hh);
+        crate::dwm::set_position_topmost(hh, x, y);
+    }
+    Ok(())
+}
+
+/// Hide the switcher overlay. Safe to call when it's already hidden/missing.
+pub fn hide_switcher_overlay(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("switcher") {
+        let _ = win.hide();
+    }
+}
+
 /// Pin a batch of dropped paths (from a window file-drop). Resolves
 /// `.lnk` to the target exe; silently skips anything that isn't a
 /// launchable .exe / .lnk so the user gets no surprise from dragging

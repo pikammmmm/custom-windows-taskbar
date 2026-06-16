@@ -296,6 +296,10 @@ fn main() {
             // (chord support preserved — Win+R, Win+E, etc still work).
             keyhook::spawn();
 
+            // 3D ring Alt+Tab switcher loop — consumes the hook's switcher
+            // signals, shows the overlay, drives selection, commits focus.
+            switcher::spawn(app.handle().clone());
+
             // Spotlight indexes — both run on their own background threads
             // and refresh on a slow loop so newly installed apps / saved
             // files show up without a glassbar restart.
