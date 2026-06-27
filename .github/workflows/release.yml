@@ -1,0 +1,91 @@
+name: Build, sign & release
+
+# Tag a commit with `vX.Y.Z` and push it: this workflow builds glassbar.exe,
+# uninstall.exe, and the MSI on a Windows runner, ships them off to
+# SignPath for Authenticode signing, and attaches the signed artifacts to
+# a GitHub Release. workflow_dispatch is also wired in for manual builds
+# when you want to verify before tagging.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create the release + upload assets
+  id-token: write   # SignPath uses OIDC instead of a long-lived API token
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      # Build uninstall.exe first so cargo tauri build's bundle step finds
+      # it in target/release/ for the WiX resource include.
+      - name: Build uninstaller
+        working-directory: src-tauri
+        run: cargo build --release --bin uninstall
+
+      - name: Build app + MSI
+        working-directory: src-tauri
+        run: cargo tauri build
+
+      - name: Stage unsigned artifacts
+        shell: bash
+        run: |
+          mkdir -p artifacts/unsigned
+          cp src-tauri/target/release/glassbar.exe artifacts/unsigned/
+          cp src-tauri/target/release/uninstall.exe artifacts/unsigned/
+          cp src-tauri/target/release/bundle/msi/glassbar_*_x64_en-US.msi artifacts/unsigned/
+
+      - name: Upload unsigned bundle for signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned
+          path: artifacts/unsigned
+          if-no-files-found: error
+
+      # SignPath Foundation: free Authenticode signing for OSS. Requires
+      # a one-time approval at signpath.io plus the org/project/policy
+      # IDs set as repo variables (no long-lived secret needed — uses the
+      # GitHub OIDC token via the action below).
+      - name: Submit signing request to SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '${{ vars.SIGNPATH_ORGANIZATION_ID }}'
+          project-slug: '${{ vars.SIGNPATH_PROJECT_SLUG }}'
+          signing-policy-slug: '${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}'
+          github-artifact-id: '${{ steps.upload-unsigned.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: artifacts/signed
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/signed/glassbar.exe
+            artifacts/signed/uninstall.exe
+            artifacts/signed/glassbar_*_x64_en-US.msi
+          generate_release_notes: true
+          draft: false
+          prerelease: false
