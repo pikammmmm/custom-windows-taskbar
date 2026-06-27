@@ -1,0 +1,23 @@
+glassbar — open-source Windows taskbar replacement.
+
+A glassy, always-on-top floating dock + side HUD + fuzzy launcher overlay that
+augments or replaces the default Windows taskbar. Built in Rust and Tauri 2,
+MIT-licensed, free forever.
+
+What's in the box:
+• Floating glassy dock — pinned + running app icons, drag to reorder, push-to-talk mic chip
+• Spotlight launcher (Win key) — Start Menu + UWP / Microsoft Store apps + your files
+• Live HUD — clock, weather, CPU / RAM / network, media controls, audio device picker, WARP toggle, system power menu
+• Theme manager — pick your own accent color, glass tint, and glass opacity
+• Hand-drawn SVG icons for File Explorer / Task Manager / Settings
+• Drag-and-drop file stash with native Explorer drag-out
+
+Download (MSI installer or portable .exe):
+https://github.com/pikammmmm/custom-windows-taskbar/releases/latest
+
+Source code (MIT):
+https://github.com/pikammmmm/custom-windows-taskbar
+
+Compatible with Windows 10 (1809+) and Windows 11. Coexists with the standard taskbar.
+
+#windows11 #windowscustomization #opensource #rustlang #tauri #desktop #productivity
