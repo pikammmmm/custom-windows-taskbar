@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "glassbar"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1754,6 +1754,8 @@ dependencies = [
  "num-traits",
  "png 0.18.1",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
