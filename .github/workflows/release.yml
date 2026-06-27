@@ -1,10 +1,12 @@
 name: Build, sign & release
 
 # Tag a commit with `vX.Y.Z` and push it: this workflow builds glassbar.exe,
-# uninstall.exe, and the MSI on a Windows runner, ships them off to
-# SignPath for Authenticode signing, and attaches the signed artifacts to
-# a GitHub Release. workflow_dispatch is also wired in for manual builds
-# when you want to verify before tagging.
+# uninstall.exe, and the MSI on a Windows runner. If SignPath is configured
+# (secret + vars present) the artifacts are sent off for Authenticode signing
+# and the SIGNED files are attached to the GitHub Release; otherwise the
+# UNSIGNED files are published directly so a release still ships.
+# workflow_dispatch is also wired in for manual builds when you want to
+# verify before tagging.
 on:
   push:
     tags:
@@ -56,7 +58,27 @@ jobs:
           cp src-tauri/target/release/uninstall.exe artifacts/unsigned/
           cp src-tauri/target/release/bundle/msi/glassbar_*_x64_en-US.msi artifacts/unsigned/
 
+      # GitHub forbids referencing secrets.* directly in a step-level `if:`,
+      # so map the SignPath secret/var into env here and emit a plain output
+      # the later steps can gate on.
+      - name: Determine signing availability
+        id: signing
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          if [ -n "$SIGNPATH_API_TOKEN" ] && [ -n "$SIGNPATH_ORGANIZATION_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "SignPath configured — artifacts will be signed."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SignPath not configured — publishing UNSIGNED artifacts."
+          fi
+
       - name: Upload unsigned bundle for signing
+        id: upload-unsigned
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: unsigned
@@ -68,6 +90,7 @@ jobs:
       # IDs set as repo variables (no long-lived secret needed — uses the
       # GitHub OIDC token via the action below).
       - name: Submit signing request to SignPath
+        if: steps.signing.outputs.enabled == 'true'
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
@@ -78,14 +101,28 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: artifacts/signed
 
+      # Pick signed artifacts when available, otherwise fall back to the
+      # unsigned ones so a release always ships.
+      - name: Assemble release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          mkdir -p artifacts/release
+          if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
+            cp artifacts/signed/* artifacts/release/
+          else
+            cp artifacts/unsigned/* artifacts/release/
+          fi
+          ls -l artifacts/release
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/signed/glassbar.exe
-            artifacts/signed/uninstall.exe
-            artifacts/signed/glassbar_*_x64_en-US.msi
+            artifacts/release/glassbar.exe
+            artifacts/release/uninstall.exe
+            artifacts/release/glassbar_*_x64_en-US.msi
           generate_release_notes: true
           draft: false
           prerelease: false
