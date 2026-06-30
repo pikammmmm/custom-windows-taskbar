@@ -84,22 +84,25 @@ const WM_NULL: u32 = 0x0000;
 const WM_TRAYHOST_SHUTDOWN: u32 = WM_APP + 1;
 
 // ───────────────────────── SHELLTRAYDATA byte offsets ─────────────────────
-// SHELLTRAYDATA { DWORD dwUnknown; DWORD dwMessage; NOTIFYICONDATAW nid; }
+// SHELLTRAYDATA { DWORD dwUnknown; DWORD dwMessage; <packed NOTIFYICONDATA> }
 //   dwMessage @ 4, nid @ 8.
-// 64-bit NOTIFYICONDATAW field offsets (relative to the whole buffer, nid@8):
-//   cbSize@8, hWnd@16, uID@24, uFlags@28, uCallbackMessage@32, hIcon@40,
-//   szTip[128]@48, dwState@304, dwStateMask@308, szInfo[256]@312,
-//   uVersion@824, szInfoTitle[64]@828, dwInfoFlags@956, guidItem@960,
-//   hBalloonIcon@976  (struct size 984; observed cbData ~1484 incl. trailing).
+// The shell marshals the tray NOTIFYICONDATA in its PACKED form: hWnd and
+// hIcon are 32-bit DWORDs (NOT 64-bit pointers) even on 64-bit Windows, with
+// no alignment padding. Verified live on Win11 26200 — CopyIcon succeeds on
+// hIcon@28 and IsWindow() is true for hWnd@12 for every captured icon.
+// Field offsets relative to the whole buffer (nid@8):
+//   cbSize@8, hWnd@12, uID@16, uFlags@20, uCallbackMessage@24, hIcon@28,
+//   szTip[128]@32, dwState@288, dwStateMask@292, szInfo[256]@296,
+//   uVersion@808, ... (trailing data extends observed cbData to ~1484).
 const OFF_DWMESSAGE: usize = 4;
 const NID_CBSIZE: usize = 8;
-const NID_HWND: usize = 16;
-const NID_UID: usize = 24;
-const NID_UFLAGS: usize = 28;
-const NID_UCALLBACK: usize = 32;
-const NID_HICON: usize = 40;
-const NID_SZTIP: usize = 48;
-const NID_UVERSION: usize = 824;
+const NID_HWND: usize = 12;
+const NID_UID: usize = 16;
+const NID_UFLAGS: usize = 20;
+const NID_UCALLBACK: usize = 24;
+const NID_HICON: usize = 28;
+const NID_SZTIP: usize = 32;
+const NID_UVERSION: usize = 808;
 const SZTIP_CHARS: usize = 128;
 
 /// Minimum buffer to safely read the load-bearing scalar fields
@@ -236,6 +239,7 @@ fn read_u32(buf: &[u8], off: usize) -> Option<u32> {
         .map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
 }
 
+#[cfg(test)]
 fn read_u64(buf: &[u8], off: usize) -> Option<u64> {
     buf.get(off..off + 8).map(|s| {
         u64::from_le_bytes([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]])
@@ -365,7 +369,7 @@ unsafe fn handle_tray_copydata(buf: &[u8]) {
     let Some(msg) = read_u32(buf, OFF_DWMESSAGE) else {
         return;
     };
-    let owner = match read_u64(buf, NID_HWND) {
+    let owner = match read_u32(buf, NID_HWND) {
         Some(v) => v as isize,
         None => return,
     };
@@ -404,7 +408,7 @@ fn upsert(owner: isize, uid: u32, flags: u32, buf: &[u8]) {
     // Some((url, needs_fallback)) => icon present (url possibly empty if the
     //          handle was missing/unrenderable, in which case we owe a fallback).
     let new_icon: Option<(String, bool)> = if flags & NIF_ICON != 0 {
-        let hicon = read_u64(buf, NID_HICON).map(|v| v as isize).unwrap_or(0);
+        let hicon = read_u32(buf, NID_HICON).map(|v| v as isize).unwrap_or(0);
         match render_primary(hicon) {
             Some(url) => Some((url, false)),
             None => Some((String::new(), true)),
@@ -831,11 +835,11 @@ pub fn diagnostics() -> String {
                 "[tray_host] parsed: dwMessage={} nid.cbSize={} hWnd=0x{:x} uID={} uFlags=0x{:x} cb=0x{:x} hIcon=0x{:x} uVersion={}",
                 read_u32(&raw, OFF_DWMESSAGE).unwrap_or(0),
                 read_u32(&raw, NID_CBSIZE).unwrap_or(0),
-                read_u64(&raw, NID_HWND).unwrap_or(0),
+                read_u32(&raw, NID_HWND).unwrap_or(0),
                 read_u32(&raw, NID_UID).unwrap_or(0),
                 read_u32(&raw, NID_UFLAGS).unwrap_or(0),
                 read_u32(&raw, NID_UCALLBACK).unwrap_or(0),
-                read_u64(&raw, NID_HICON).unwrap_or(0),
+                read_u32(&raw, NID_HICON).unwrap_or(0),
                 read_u32(&raw, NID_UVERSION).unwrap_or(0),
             );
         }
@@ -888,24 +892,24 @@ mod tests {
     use super::*;
 
     /// Build a synthetic SHELLTRAYDATA buffer with known values at the
-    /// documented 64-bit offsets. Tooltip is a non-PII placeholder.
+    /// documented packed offsets. Tooltip is a non-PII placeholder.
     fn make_buf(
         msg: u32,
-        hwnd: u64,
+        hwnd: u32,
         uid: u32,
         flags: u32,
         cb: u32,
-        hicon: u64,
+        hicon: u32,
         tip: &str,
         ver: u32,
     ) -> Vec<u8> {
         let mut b = vec![0u8; 1484];
         b[OFF_DWMESSAGE..OFF_DWMESSAGE + 4].copy_from_slice(&msg.to_le_bytes());
-        b[NID_HWND..NID_HWND + 8].copy_from_slice(&hwnd.to_le_bytes());
+        b[NID_HWND..NID_HWND + 4].copy_from_slice(&hwnd.to_le_bytes());
         b[NID_UID..NID_UID + 4].copy_from_slice(&uid.to_le_bytes());
         b[NID_UFLAGS..NID_UFLAGS + 4].copy_from_slice(&flags.to_le_bytes());
         b[NID_UCALLBACK..NID_UCALLBACK + 4].copy_from_slice(&cb.to_le_bytes());
-        b[NID_HICON..NID_HICON + 8].copy_from_slice(&hicon.to_le_bytes());
+        b[NID_HICON..NID_HICON + 4].copy_from_slice(&hicon.to_le_bytes());
         for (i, c) in tip.encode_utf16().enumerate() {
             let o = NID_SZTIP + i * 2;
             b[o..o + 2].copy_from_slice(&c.to_le_bytes());
@@ -918,7 +922,7 @@ mod tests {
     fn parses_documented_offsets() {
         let buf = make_buf(
             NIM_ADD,
-            0x0000_0001_2345_6789,
+            0x1234_5678,
             7,
             NIF_MESSAGE | NIF_ICON | NIF_TIP,
             0x401,
@@ -927,14 +931,14 @@ mod tests {
             4,
         );
         assert_eq!(read_u32(&buf, OFF_DWMESSAGE), Some(NIM_ADD));
-        assert_eq!(read_u64(&buf, NID_HWND), Some(0x0000_0001_2345_6789));
+        assert_eq!(read_u32(&buf, NID_HWND), Some(0x1234_5678));
         assert_eq!(read_u32(&buf, NID_UID), Some(7));
         assert_eq!(
             read_u32(&buf, NID_UFLAGS),
             Some(NIF_MESSAGE | NIF_ICON | NIF_TIP)
         );
         assert_eq!(read_u32(&buf, NID_UCALLBACK), Some(0x401));
-        assert_eq!(read_u64(&buf, NID_HICON), Some(0xDEAD_BEEF));
+        assert_eq!(read_u32(&buf, NID_HICON), Some(0xDEAD_BEEF));
         assert_eq!(read_wstr(&buf, NID_SZTIP, SZTIP_CHARS), "TestTip");
         assert_eq!(read_u32(&buf, NID_UVERSION), Some(4));
     }
