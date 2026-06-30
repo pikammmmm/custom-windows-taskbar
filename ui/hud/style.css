@@ -615,6 +615,113 @@
 .apps-item:hover .app-close { opacity: 1; }
 .apps-item .app-close:hover { color: #ff7676; background: rgba(255, 80, 80, 0.18); }
 
+/* System tray mirror — reuses .apps-header for the collapse toggle. */
+.tray-block { padding: 8px 12px 10px; }
+.tray-body {
+  max-height: 600px;
+  overflow: hidden;
+  transition: max-height 220ms ease, opacity 180ms ease;
+  opacity: 1;
+}
+.tray-body.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.tray-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 2px 0;
+}
+.tray-icon {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background 100ms ease, box-shadow 100ms ease;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--glass-fg);
+}
+.tray-icon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.tray-icon:hover {
+  background: rgba(var(--accent-rgb), 0.16);
+  /* inset ring — a regular box-shadow would render outside the region clip. */
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.5);
+}
+.tray-icon:active { background: rgba(var(--accent-rgb), 0.24); }
+.tray-icon-fallback img { display: none; }
+.tray-empty {
+  font-size: 11px;
+  color: var(--glass-fg-dim);
+  padding: 6px 4px 2px;
+}
+
+/* Glass context menu for a tray icon — visually matches ui/menu. Positioned
+   fixed to the viewport (clientX/Y) so the scroll container can't offset it. */
+.tray-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(28, 32, 44, 0.97), rgba(10, 12, 18, 0.97));
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-border-top);
+  backdrop-filter: blur(40px) saturate(170%) hue-rotate(var(--glass-hue));
+  -webkit-backdrop-filter: blur(40px) saturate(170%) hue-rotate(var(--glass-hue));
+  animation: tray-menu-in 130ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tray-menu[hidden] { display: none; }
+@keyframes tray-menu-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.tray-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--glass-fg);
+  transition: background 80ms ease;
+}
+.tray-menu-item:hover { background: rgba(255, 255, 255, 0.10); }
+.tray-menu-item:active { background: rgba(255, 255, 255, 0.16); }
+.tray-menu-item .glyph {
+  width: 14px;
+  text-align: center;
+  color: var(--glass-fg-dim);
+  flex-shrink: 0;
+}
+.tray-menu-item .label { flex: 1; }
+.tray-menu-item.danger { color: #ff7676; }
+.tray-menu-item.danger:hover { background: rgba(255, 80, 80, 0.18); }
+.tray-menu-item.danger .glyph { color: #ff7676; }
+.tray-menu-sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.10);
+  margin: 4px 6px;
+}
+
 /* Toast */
 .toast {
   position: absolute;

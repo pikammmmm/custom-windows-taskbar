@@ -260,6 +260,133 @@ el.appsToggle.addEventListener('click', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// System tray mirror — visible Windows notification-area icons re-surfaced.
+// Rust's tray_mirror poller emits `tray:changed` (Vec<TrayIcon>) while the
+// HUD is visible; on show we also invoke `list_tray_icons` directly so we can
+// tell "no icons" (resolves empty) from "tray unavailable" (rejects).
+// ─────────────────────────────────────────────────────────────────────────
+const trayBlock = document.getElementById('tray-block');
+const trayToggle = document.getElementById('tray-toggle');
+const trayBody = document.getElementById('tray-body');
+const trayGrid = document.getElementById('tray-grid');
+const trayLabel = document.getElementById('tray-label');
+const trayEmpty = document.getElementById('tray-empty');
+const trayMenu = document.getElementById('tray-menu');
+
+let trayIcons = [];
+let trayAvailable = true;
+let trayMenuTarget = null;
+
+function trayArgs(t) {
+  // Rust params are snake_case; Tauri maps these camelCase keys for us.
+  return { ownerHwnd: t.owner_hwnd, uid: t.uid, callbackMsg: t.callback_msg, version: t.version };
+}
+
+function trayName(t) {
+  if (t.tooltip) return t.tooltip;
+  const base = (t.exe_path || '').split('\\').pop().replace(/\.exe$/i, '');
+  return base || 'app';
+}
+
+function renderTray() {
+  trayLabel.textContent = trayIcons.length ? `System Tray · ${trayIcons.length}` : 'System Tray';
+  trayGrid.innerHTML = '';
+  if (!trayAvailable) {
+    trayEmpty.textContent = 'Tray unavailable';
+    trayEmpty.style.display = '';
+    return;
+  }
+  if (!trayIcons.length) {
+    trayEmpty.textContent = 'No tray icons';
+    trayEmpty.style.display = '';
+    return;
+  }
+  trayEmpty.style.display = 'none';
+  for (const t of trayIcons) {
+    const btn = document.createElement('button');
+    btn.className = 'tray-icon';
+    btn.title = trayName(t);
+    const img = document.createElement('img');
+    img.src = t.icon;
+    img.alt = '';
+    img.draggable = false;
+    // If the data URL fails to decode, fall back to a letter chip so the grid
+    // never shows a broken-image glyph.
+    img.addEventListener('error', () => {
+      btn.classList.add('tray-icon-fallback');
+      btn.textContent = (trayName(t)[0] || '?').toUpperCase();
+    });
+    btn.appendChild(img);
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideTrayMenu();
+      invoke('tray_activate', trayArgs(t)).catch(() => {});
+    });
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openTrayMenu(e, t);
+    });
+    trayGrid.appendChild(btn);
+  }
+}
+
+function refreshTray() {
+  invoke('list_tray_icons')
+    .then((list) => { trayAvailable = true; trayIcons = Array.isArray(list) ? list : []; renderTray(); })
+    .catch((err) => {
+      trayAvailable = false;
+      renderTray();
+      invoke('dbg_log', { message: `list_tray_icons failed: ${err}` }).catch(() => {});
+    });
+}
+
+function openTrayMenu(e, t) {
+  trayMenuTarget = t;
+  trayMenu.hidden = false;
+  // Measure after un-hiding so width/height are real, then clamp to viewport.
+  const rect = trayMenu.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  let x = e.clientX;
+  let y = e.clientY;
+  if (x + rect.width > vw) x = vw - rect.width - 6;
+  if (y + rect.height > vh) y = vh - rect.height - 6;
+  trayMenu.style.left = `${Math.max(6, x)}px`;
+  trayMenu.style.top = `${Math.max(6, y)}px`;
+}
+
+function hideTrayMenu() {
+  trayMenu.hidden = true;
+  trayMenuTarget = null;
+}
+
+trayMenu.querySelectorAll('[data-tray-action]').forEach((item) => {
+  item.addEventListener('click', () => {
+    const t = trayMenuTarget;
+    if (!t) return;
+    const action = item.dataset.trayAction;
+    if (action === 'activate') invoke('tray_activate', trayArgs(t)).catch(() => {});
+    else if (action === 'menu') invoke('tray_open_menu', trayArgs(t)).catch(() => {});
+    else if (action === 'quit') invoke('tray_quit', { ownerHwnd: t.owner_hwnd }).catch(() => {});
+    else if (action === 'force-quit') invoke('tray_force_quit', { ownerHwnd: t.owner_hwnd }).catch(() => {});
+    hideTrayMenu();
+  });
+});
+
+// Dismiss the menu on any outside click, Escape, or scroll.
+window.addEventListener('click', (e) => {
+  if (!trayMenu.hidden && !trayMenu.contains(e.target)) hideTrayMenu();
+});
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTrayMenu(); });
+document.querySelector('.hud-scroll')?.addEventListener('scroll', hideTrayMenu, { passive: true });
+
+trayToggle.addEventListener('click', () => {
+  const expanded = trayToggle.getAttribute('aria-expanded') === 'true';
+  trayToggle.setAttribute('aria-expanded', String(!expanded));
+  trayBody.classList.toggle('collapsed', expanded);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Files stash — drop files in, drag them back out anywhere
 // ─────────────────────────────────────────────────────────────────────────
 const stashToggle = document.getElementById('stash-toggle');
@@ -708,6 +835,12 @@ async function seedVolumeFromSettings() {
 async function init() {
   await listen('hud:update', (e) => { lastSnapshot = e.payload; render(); });
   await listen('apps:changed', (e) => { runningApps = e.payload; renderApps(); });
+  // System tray — poller emits this while the HUD is visible.
+  await listen('tray:changed', (e) => {
+    trayAvailable = true;
+    trayIcons = Array.isArray(e.payload) ? e.payload : [];
+    renderTray();
+  });
 
   // Replay the entrance / exit CSS animations whenever the dock-toggle button
   // shows or hides the HUD. CSS animations don't auto-replay on window.show()
@@ -727,6 +860,10 @@ async function init() {
     void hudEl.offsetHeight;
     hudEl.style.animation = '';
     seedVolumeFromSettings();
+    // Pull a fresh tray read on every show — also resolves the "Tray
+    // unavailable" state that the event stream can't express.
+    refreshTray();
+    hideTrayMenu();
   };
   window.__glassbarHudPlayHideAnim = () => {
     hudEl.classList.add('hiding');
@@ -756,6 +893,7 @@ async function init() {
 
   render();
   renderApps();
+  renderTray();
   setInterval(render, 1000);
   // Seed once on first paint too so the very first show of the HUD
   // isn't blank-then-flash either.
