@@ -54,7 +54,7 @@ pub fn get_icon_data_url(exe_path: &str, hwnd: Option<isize>) -> Result<String> 
 /// Render an externally-owned `HICON` (e.g. one obtained via `CopyIcon` from
 /// another process's notification-area data) to a PNG `data:` URL. Does NOT
 /// take ownership of `hicon` — the caller is responsible for `DestroyIcon` on
-/// any copy it made. Used by `tray_mirror` for system-tray icon mirroring.
+/// any copy it made. Used by `tray_host` for system-tray icon mirroring.
 pub fn icon_handle_to_data_url(hicon: HICON) -> Result<String> {
     if hicon.0.is_null() {
         return Err(anyhow!("null HICON"));

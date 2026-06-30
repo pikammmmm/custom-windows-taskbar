@@ -978,9 +978,6 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
         .ok_or_else(|| "hud window missing".to_string())?;
     let visible = win.is_visible().map_err(|e| e.to_string())?;
     if visible {
-        // Stop mirroring the system tray — reads only happen while the HUD is
-        // on screen so we keep cross-process work off the hot path.
-        crate::tray_mirror::stop();
         // Play the HUD's outgoing CSS animation, then hide the window after
         // it finishes — without the delay we'd flash off mid-animation.
         // emit_to+eval pair: eval is the reliable backstop because
@@ -997,9 +994,10 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
     } else {
         win.show().map_err(|e| e.to_string())?;
         win.set_always_on_top(true).map_err(|e| e.to_string())?;
-        // Start mirroring the system tray (immediate read + ~1.5s poll) so the
-        // tray block populates as the HUD appears.
-        crate::tray_mirror::start(app.clone());
+        // The system-tray host (tray_host) runs continuously and emits
+        // `tray:changed` on its own; the HUD just pulls a fresh `list_tray_icons`
+        // on show (below, via the show-anim eval) to resolve the
+        // "no icons" vs "tray unavailable" distinction. No per-show poller.
         // Same eval bypass as clipboard show. The named event
         // (hud:show-anim) was missed often enough that the volume slider
         // and entrance animation didn't replay on reopen — the HUD
@@ -1012,14 +1010,20 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
     }
 }
 
-// ───────────────────────── System tray mirror ─────────────────────────
-// Thin wrappers over `tray_mirror`. The HUD calls `list_tray_icons` on show
-// (so it can distinguish "no icons" from "tray unavailable") and listens for
-// the `tray:changed` event the poller emits while the HUD is visible.
+// ───────────────────────── System tray host ─────────────────────────
+// Thin wrappers over `tray_host` (the Shell_NotifyIcon interception core).
+// The host runs continuously and keeps a live map of registered tray icons;
+// these commands read/act on that map. The HUD calls `list_tray_icons` on show
+// (to distinguish "no icons" from "tray unavailable") and listens for the
+// `tray:changed` event the host emits on every add/modify/delete.
 
 #[tauri::command]
-pub fn list_tray_icons() -> Result<Vec<crate::tray_mirror::TrayIcon>, String> {
-    crate::tray_mirror::read_tray_icons().map_err(|e| e.to_string())
+pub fn list_tray_icons() -> Result<Vec<crate::tray_host::TrayIcon>, String> {
+    if !crate::tray_host::host_running() {
+        // Host window never came up → surface "Tray unavailable" in the HUD.
+        return Err("tray host not running".to_string());
+    }
+    Ok(crate::tray_host::snapshot())
 }
 
 #[tauri::command]
@@ -1029,7 +1033,7 @@ pub fn tray_activate(
     callback_msg: u32,
     version: u32,
 ) -> Result<(), String> {
-    crate::tray_mirror::activate(owner_hwnd, uid, callback_msg, version).map_err(|e| e.to_string())
+    crate::tray_host::activate(owner_hwnd, uid, callback_msg, version).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1039,7 +1043,7 @@ pub fn tray_open_menu(
     callback_msg: u32,
     version: u32,
 ) -> Result<(), String> {
-    crate::tray_mirror::open_menu(owner_hwnd, uid, callback_msg, version).map_err(|e| e.to_string())
+    crate::tray_host::open_menu(owner_hwnd, uid, callback_msg, version).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1054,7 +1058,7 @@ pub fn tray_force_quit(owner_hwnd: isize) -> Result<(), String> {
 
 #[tauri::command]
 pub fn tray_diagnostics() -> String {
-    crate::tray_mirror::diagnostics()
+    crate::tray_host::diagnostics()
 }
 
 /// "Close all" from the dock's right-click menu — matches Task Manager's

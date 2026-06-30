@@ -24,7 +24,7 @@ mod app_actions;
 mod stash;
 mod wndproc;
 mod logger;
-mod tray_mirror;
+mod tray_host;
 
 /// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
 /// into our pinned.json. Critical: only items the user has pinned to the
@@ -291,12 +291,20 @@ fn main() {
 
             // Hide the original Windows taskbar so glassbar owns the strip.
             // Re-asserted periodically because shell restarts (explorer crash,
-            // multi-monitor changes) can re-show it.
+            // multi-monitor changes) can re-show it. The re-assert loop skips
+            // glassbar's own tray-host Shell_TrayWnd (see shell_taskbar) so it
+            // keeps hiding EXPLORER's taskbar rather than fighting itself.
             let _ = shell_taskbar::hide_windows_taskbar();
             std::thread::spawn(|| loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
                 let _ = shell_taskbar::hide_windows_taskbar();
             });
+
+            // System-tray host: register our own Shell_TrayWnd, broadcast
+            // TaskbarCreated, and intercept Shell_NotifyIcon so the HUD's tray
+            // block mirrors the notification-area icons (the real taskbar is
+            // hidden). Runs continuously on its own Win32 message-loop thread.
+            tray_host::spawn(app.handle().clone());
 
             // Auto-hide dock + keep dock/HUD pinned above fullscreen apps.
             dock_autohide::spawn(app.handle().clone());
@@ -343,6 +351,11 @@ fn main() {
             // Restore the Windows taskbar on graceful exit so the user is not
             // left without a working shell if they uninstall / quit glassbar.
             if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                // Tear down our Shell_TrayWnd host and re-broadcast
+                // TaskbarCreated first so explorer reclaims the tray icons,
+                // then un-hide explorer's taskbar. shutdown() is idempotent, so
+                // firing on both ExitRequested and Exit is harmless.
+                tray_host::shutdown();
                 let _ = shell_taskbar::show_windows_taskbar();
             }
         });
