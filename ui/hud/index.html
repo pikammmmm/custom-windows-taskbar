@@ -202,6 +202,21 @@
         </div>
       </section>
 
+      <!-- System tray — mirrors the visible Windows notification-area icons,
+           which would otherwise vanish since glassbar replaces the taskbar.
+           Left-click activates the app; right-click opens the tray context
+           menu. Collapsible, defaults open; same pattern as the apps block. -->
+      <section class="block tray-block" id="tray-block">
+        <button class="apps-header" id="tray-toggle" aria-expanded="true">
+          <span id="tray-label">System Tray</span>
+          <span class="apps-caret" id="tray-caret">▾</span>
+        </button>
+        <div class="tray-body" id="tray-body">
+          <div class="tray-grid" id="tray-grid"></div>
+          <div class="tray-empty" id="tray-empty">No tray icons</div>
+        </div>
+      </section>
+
       <!-- Background apps — collapsible, defaults open -->
       <section class="block apps-block">
         <button class="apps-header" id="apps-toggle" aria-expanded="true">
@@ -214,6 +229,23 @@
 
     <div class="drag-handle" id="drag"></div>
     <div class="toast" id="toast"></div>
+
+    <!-- Glass context menu for a tray icon (right-click). Matches ui/menu. -->
+    <div class="tray-menu" id="tray-menu" hidden>
+      <button class="tray-menu-item" data-tray-action="activate">
+        <span class="glyph">▣</span><span class="label">Activate</span>
+      </button>
+      <button class="tray-menu-item" data-tray-action="menu">
+        <span class="glyph">☰</span><span class="label">Open app menu</span>
+      </button>
+      <div class="tray-menu-sep"></div>
+      <button class="tray-menu-item" data-tray-action="quit">
+        <span class="glyph">⏻</span><span class="label">Quit</span>
+      </button>
+      <button class="tray-menu-item danger" data-tray-action="force-quit">
+        <span class="glyph">✕</span><span class="label">Force quit</span>
+      </button>
+    </div>
   </div>
   <script type="module" src="../shared/theme.js"></script>
   <script type="module" src="app.js"></script>
