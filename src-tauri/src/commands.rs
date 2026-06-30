@@ -978,6 +978,9 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
         .ok_or_else(|| "hud window missing".to_string())?;
     let visible = win.is_visible().map_err(|e| e.to_string())?;
     if visible {
+        // Stop mirroring the system tray — reads only happen while the HUD is
+        // on screen so we keep cross-process work off the hot path.
+        crate::tray_mirror::stop();
         // Play the HUD's outgoing CSS animation, then hide the window after
         // it finishes — without the delay we'd flash off mid-animation.
         // emit_to+eval pair: eval is the reliable backstop because
@@ -994,6 +997,9 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
     } else {
         win.show().map_err(|e| e.to_string())?;
         win.set_always_on_top(true).map_err(|e| e.to_string())?;
+        // Start mirroring the system tray (immediate read + ~1.5s poll) so the
+        // tray block populates as the HUD appears.
+        crate::tray_mirror::start(app.clone());
         // Same eval bypass as clipboard show. The named event
         // (hud:show-anim) was missed often enough that the volume slider
         // and entrance animation didn't replay on reopen — the HUD
@@ -1004,6 +1010,51 @@ pub fn toggle_hud(app: AppHandle) -> Result<bool, String> {
         let _ = win.eval("window.__glassbarHudPlayShowAnim && window.__glassbarHudPlayShowAnim();");
         Ok(true)
     }
+}
+
+// ───────────────────────── System tray mirror ─────────────────────────
+// Thin wrappers over `tray_mirror`. The HUD calls `list_tray_icons` on show
+// (so it can distinguish "no icons" from "tray unavailable") and listens for
+// the `tray:changed` event the poller emits while the HUD is visible.
+
+#[tauri::command]
+pub fn list_tray_icons() -> Result<Vec<crate::tray_mirror::TrayIcon>, String> {
+    crate::tray_mirror::read_tray_icons().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn tray_activate(
+    owner_hwnd: isize,
+    uid: u32,
+    callback_msg: u32,
+    version: u32,
+) -> Result<(), String> {
+    crate::tray_mirror::activate(owner_hwnd, uid, callback_msg, version).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn tray_open_menu(
+    owner_hwnd: isize,
+    uid: u32,
+    callback_msg: u32,
+    version: u32,
+) -> Result<(), String> {
+    crate::tray_mirror::open_menu(owner_hwnd, uid, callback_msg, version).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn tray_quit(owner_hwnd: isize) -> Result<(), String> {
+    win32::close(owner_hwnd).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn tray_force_quit(owner_hwnd: isize) -> Result<(), String> {
+    win32::terminate_process_of(owner_hwnd).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn tray_diagnostics() -> String {
+    crate::tray_mirror::diagnostics()
 }
 
 /// "Close all" from the dock's right-click menu — matches Task Manager's

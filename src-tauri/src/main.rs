@@ -24,6 +24,7 @@ mod app_actions;
 mod stash;
 mod wndproc;
 mod logger;
+mod tray_mirror;
 
 /// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
 /// into our pinned.json. Critical: only items the user has pinned to the
@@ -204,6 +205,12 @@ fn main() {
             commands::clipboard_clear,
             commands::switcher_set_index,
             commands::switcher_commit,
+            commands::list_tray_icons,
+            commands::tray_activate,
+            commands::tray_open_menu,
+            commands::tray_quit,
+            commands::tray_force_quit,
+            commands::tray_diagnostics,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
