@@ -51,6 +51,22 @@ pub fn get_icon_data_url(exe_path: &str, hwnd: Option<isize>) -> Result<String> 
     ))
 }
 
+/// Render an externally-owned `HICON` (e.g. one obtained via `CopyIcon` from
+/// another process's notification-area data) to a PNG `data:` URL. Does NOT
+/// take ownership of `hicon` — the caller is responsible for `DestroyIcon` on
+/// any copy it made. Used by `tray_mirror` for system-tray icon mirroring.
+pub fn icon_handle_to_data_url(hicon: HICON) -> Result<String> {
+    if hicon.0.is_null() {
+        return Err(anyhow!("null HICON"));
+    }
+    let png = hicon_to_png(hicon, ICON_SIZE)?;
+    use base64::Engine;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&png)
+    ))
+}
+
 /// Hand-tuned SVG overrides for specific system exes. Returned as a data
 /// URL ready to drop into <img src=>. None for everything else.
 fn override_icon_for(exe_path: &str) -> Option<&'static str> {
