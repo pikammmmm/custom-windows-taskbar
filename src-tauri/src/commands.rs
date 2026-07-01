@@ -836,6 +836,22 @@ Read-Host 'Press Enter to close this window'
         })
 }
 
+/// Purge Windows cached memory (standby list) + trim process working sets
+/// — the RAMMap/ISLC "Empty Standby List" operation. The purge needs admin
+/// plus SeProfileSingleProcessPrivilege and glassbar runs non-elevated, so
+/// the heavy lifting happens in an elevated `glassbar.exe --clear-ram`
+/// helper relaunch — one UAC prompt per click (install_lhm precedent; see
+/// ram_clear.rs for the mechanics and the why-not-run-glassbar-elevated
+/// rationale). async + spawn_blocking because ShellExecuteExW blocks until
+/// the user answers the UAC dialog — a sync command would freeze every
+/// glassbar window while the consent prompt is up.
+#[tauri::command]
+pub async fn clear_cached_ram() -> Result<crate::ram_clear::ClearRamOutcome, String> {
+    tauri::async_runtime::spawn_blocking(crate::ram_clear::clear_cached_ram_blocking)
+        .await
+        .map_err(|e| format!("clear_cached_ram task failed: {e}"))?
+}
+
 /// Switch the active keyboard layout to the layout identified by the
 /// raw HKL value (returned in the snapshot's `keyboard.installed`).
 /// Same effect as Win+Space, scoped to the foreground window.
