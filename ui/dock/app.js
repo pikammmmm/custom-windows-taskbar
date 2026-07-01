@@ -46,6 +46,8 @@ const tray = {
   volIcon: document.getElementById('tray-vol-icon'),
   volVal: document.getElementById('tray-vol-val'),
   mic: document.getElementById('tray-mic'),
+  ram: document.getElementById('tray-ram'),
+  ramVal: document.getElementById('tray-ram-val'),
   lang: document.getElementById('tray-lang'),
   langVal: document.getElementById('tray-lang-val'),
   clock: document.getElementById('tray-clock'),
@@ -884,6 +886,53 @@ tray.mic.addEventListener('click', async (e) => {
       height: estimateMenuHeight(items),
     },
   }).catch(() => {});
+});
+
+// RAM chip — purge Windows cached memory (standby list) + trim working
+// sets. The real work runs in an elevated helper relaunch, so each click
+// costs one UAC prompt; see src-tauri/src/ram_clear.rs for the mechanics.
+// While the helper runs the broom pulses and the chip ignores clicks; the
+// outcome flashes inline in the tray-val slot for a few seconds — the dock
+// has no toast surface, chips carry their own values (volume-% precedent).
+let ramBusy = false;
+let ramFlashTimer = null;
+function ramFlash(text, kind) {
+  tray.ramVal.textContent = text;
+  tray.ramVal.hidden = false;
+  tray.ram.classList.toggle('good', kind === 'good');
+  tray.ram.classList.toggle('bad', kind === 'bad');
+  if (ramFlashTimer) clearTimeout(ramFlashTimer);
+  ramFlashTimer = setTimeout(() => {
+    tray.ramVal.hidden = true;
+    tray.ram.classList.remove('good', 'bad');
+  }, 4000);
+}
+tray.ram.addEventListener('click', async () => {
+  if (ramBusy) return;
+  ramBusy = true;
+  tray.ram.classList.add('busy');
+  try {
+    const r = await invoke('clear_cached_ram');
+    if (r && r.status === 'cancelled') {
+      ramFlash('cancelled');
+    } else {
+      // Headline = the bigger of "cache purged" and "available gained" —
+      // purge-heavy runs show up in freed_mb, trim-heavy runs in
+      // avail_delta_mb. Under ~16 MB is measurement noise, not a win.
+      const freed = Math.max(r?.freed_mb ?? 0, r?.avail_delta_mb ?? 0);
+      if (freed >= 16) {
+        ramFlash(freed >= 1024 ? `freed ${(freed / 1024).toFixed(1)} GB` : `freed ${freed} MB`, 'good');
+      } else {
+        ramFlash('nothing to free');
+      }
+    }
+  } catch (err) {
+    ramFlash('failed', 'bad');
+    invoke('dbg_log', { message: `clear_cached_ram error: ${err}` }).catch(() => {});
+  } finally {
+    ramBusy = false;
+    tray.ram.classList.remove('busy');
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────

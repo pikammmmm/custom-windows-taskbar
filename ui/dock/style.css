@@ -358,6 +358,25 @@ body.drop-active .glass-card {
 .tray-chip.batt-chip.charging .tray-icon { color: #6ee7b7; }
 .tray-chip.batt-chip.low .tray-icon { color: #f88; }
 
+/* RAM chip — an action, not a status readout: clicking purges the Windows
+   standby list via an elevated helper (src-tauri/src/ram_clear.rs). While
+   the helper runs the broom pulses and the chip goes inert; the result
+   ("freed 1.2 GB" / "nothing to free" / "cancelled") flashes in the
+   tray-val slot with the same neon green/red the net chip uses. */
+.tray-chip.ram-chip.busy { pointer-events: none; }
+.tray-chip.ram-chip.busy .tray-icon {
+  animation: ram-busy 900ms ease-in-out infinite;
+}
+@keyframes ram-busy {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+.tray-chip.ram-chip.good .tray-val {
+  color: #6ee7b7;
+  text-shadow: 0 0 8px rgba(110, 231, 183, 0.55);
+}
+.tray-chip.ram-chip.bad .tray-val { color: #f88; }
+
 /* Media chip — album art with prev/play/next mini buttons hugging it.
    Smooth hover/press transitions for that tactile feel. */
 .tray-media {
