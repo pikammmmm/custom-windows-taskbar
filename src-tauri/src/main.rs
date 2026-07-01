@@ -25,6 +25,7 @@ mod stash;
 mod wndproc;
 mod logger;
 mod tray_host;
+mod ram_clear;
 
 /// Watch the Windows-taskbar pin folder and merge *newly* pinned entries
 /// into our pinned.json. Critical: only items the user has pinned to the
@@ -121,6 +122,15 @@ fn acquire_singleton() -> bool {
 }
 
 fn main() {
+    // Elevated helper mode: `glassbar.exe --clear-ram <result-file>` purges
+    // the standby list and exits without touching the Tauri runtime. Must be
+    // dispatched BEFORE the singleton check — the resident (non-elevated)
+    // instance is alive and holding the mutex while this helper runs.
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--clear-ram") {
+        std::process::exit(ram_clear::run_helper(&args));
+    }
+
     if !acquire_singleton() {
         // Another instance is already running — exit silently without trying
         // to start the Tauri runtime or its windows.
@@ -211,6 +221,7 @@ fn main() {
             commands::tray_quit,
             commands::tray_force_quit,
             commands::tray_diagnostics,
+            commands::clear_cached_ram,
         ])
         .setup(|app| {
             let pinned_path = config::pinned_path()?;
