@@ -40,11 +40,23 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2.0" --locked
 
-      # Build uninstall.exe first so cargo tauri build's bundle step finds
-      # it in target/release/ for the WiX resource include.
-      - name: Build uninstaller
+      # Build uninstall.exe + updater.exe first so cargo tauri build's bundle
+      # step finds them in target/release/ for the WiX resource include.
+      # tauri_build (build.rs) refuses to compile ANY bin of the crate while a
+      # bundle resource is missing, so a clean runner deadlocks on itself:
+      # drop empty placeholders first; cargo overwrites them with the real exes.
+      - name: Build uninstaller + updater
         working-directory: src-tauri
-        run: cargo build --release --bin uninstall
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target/release | Out-Null
+          foreach ($f in 'uninstall.exe', 'updater.exe') {
+            if (-not (Test-Path "target/release/$f")) { New-Item -ItemType File "target/release/$f" | Out-Null }
+          }
+          cargo build --release --bin uninstall --bin updater
+          foreach ($f in 'uninstall.exe', 'updater.exe') {
+            if ((Get-Item "target/release/$f").Length -eq 0) { throw "$f is still the empty placeholder" }
+          }
 
       - name: Build app + MSI
         working-directory: src-tauri
