@@ -113,6 +113,17 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: artifacts/signed
 
+      # Manual (workflow_dispatch) builds publish no release, so hand the
+      # files back as a run artifact: this is the installer to send a tester
+      # before tagging.
+      - name: Upload test build
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: glassbar-test-build
+          path: artifacts/unsigned
+          if-no-files-found: error
+
       # Pick signed artifacts when available, otherwise fall back to the
       # unsigned ones so a release always ships.
       - name: Assemble release artifacts
