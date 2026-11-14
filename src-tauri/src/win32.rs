@@ -288,6 +288,164 @@ pub fn monitor_rect_for_hwnd(hwnd: isize) -> (i32, i32, i32, i32) {
     }
 }
 
+// ───────────────────── fullscreen-app detection ─────────────────────
+// A taskbar must get out of the way of a real fullscreen app (F11 browser,
+// borderless game, video player). Explorer's own taskbar does this with its
+// "rude window" check; these helpers are glassbar's equivalent.
+
+const WS_CAPTION_BITS: u32 = 0x00C0_0000;
+const WS_MAXIMIZE_BIT: u32 = 0x0100_0000;
+
+/// Pure fullscreen test: the window covers its whole monitor AND is neither a
+/// normal captioned window nor a maximized one.
+///
+/// The maximized exclusion matters because glassbar releases the taskbar's
+/// reserved strip, so the work area equals the monitor and every maximized
+/// window covers it too. Real fullscreen modes drop the maximized state first
+/// (Chromium restores before F11, games use a plain WS_POPUP).
+///
+/// Rects are `(left, top, right, bottom)`.
+pub fn is_fullscreen_geometry(win: (i32, i32, i32, i32), mon: (i32, i32, i32, i32), style: u32) -> bool {
+    let covers = win.0 <= mon.0 && win.1 <= mon.1 && win.2 >= mon.2 && win.3 >= mon.3;
+    let captioned = style & WS_CAPTION_BITS == WS_CAPTION_BITS;
+    let maximized = style & WS_MAXIMIZE_BIT != 0;
+    covers && !captioned && !maximized
+}
+
+/// Monitor handle (as isize) of the fullscreen app in the foreground.
+///   - `Some(0)`   — the foreground window is not fullscreen.
+///   - `Some(mon)` — a fullscreen app owns the foreground on monitor `mon`.
+///   - `None`      — the foreground is glassbar itself (spotlight, menu, ring
+///                   switcher); callers keep their previous answer so opening
+///                   one of our own panels over a game doesn't flip the state.
+pub fn fullscreen_foreground_monitor() -> Option<isize> {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
+    use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetWindowRect, GWL_STYLE};
+    unsafe {
+        let fg = GetForegroundWindow();
+        if fg.0.is_null() {
+            return Some(0);
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(fg, Some(&mut pid));
+        if pid == GetCurrentProcessId() {
+            return None;
+        }
+        // The desktop and the shell's own surfaces cover the monitor without a
+        // caption — they are not fullscreen apps.
+        let mut buf = [0u16; 64];
+        let len = GetClassNameW(fg, &mut buf);
+        let class = String::from_utf16_lossy(&buf[..len.max(0) as usize]);
+        if matches!(
+            class.as_str(),
+            "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+        ) {
+            return Some(0);
+        }
+        if !IsWindowVisible(fg).as_bool() || IsIconic(fg).as_bool() {
+            return Some(0);
+        }
+        let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+        // Exclusive-mode Direct3D never shows up as a plain window rect.
+        if matches!(SHQueryUserNotificationState(), Ok(s) if s == QUNS_RUNNING_D3D_FULL_SCREEN) {
+            return Some(mon.0 as isize);
+        }
+        let mut wr = RECT::default();
+        if GetWindowRect(fg, &mut wr).is_err() {
+            return Some(0);
+        }
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+            return Some(0);
+        }
+        let m = mi.rcMonitor;
+        let style = GetWindowLongW(fg, GWL_STYLE) as u32;
+        if is_fullscreen_geometry(
+            (wr.left, wr.top, wr.right, wr.bottom),
+            (m.left, m.top, m.right, m.bottom),
+            style,
+        ) {
+            Some(mon.0 as isize)
+        } else {
+            Some(0)
+        }
+    }
+}
+
+/// Monitor handle (as isize) containing `hwnd`.
+pub fn monitor_of_hwnd(hwnd: isize) -> isize {
+    use windows::Win32::Graphics::Gdi::{MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+    unsafe { MonitorFromWindow(HWND(hwnd as *mut _), MONITOR_DEFAULTTONEAREST).0 as isize }
+}
+
+/// Monitor handle (as isize) containing the screen point.
+pub fn monitor_at_point(x: i32, y: i32) -> isize {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
+    unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST).0 as isize }
+}
+
+pub fn is_visible(hwnd: isize) -> bool {
+    unsafe { IsWindowVisible(HWND(hwnd as *mut _)).as_bool() }
+}
+
+/// Show or hide a window without activating it or touching focus.
+pub fn set_visible_noactivate(hwnd: isize, visible: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_SHOWNOACTIVATE};
+    unsafe {
+        let _ = ShowWindow(
+            HWND(hwnd as *mut _),
+            if visible { SW_SHOWNOACTIVATE } else { SW_HIDE },
+        );
+    }
+}
+
+#[cfg(test)]
+mod fullscreen_tests {
+    use super::is_fullscreen_geometry;
+
+    const MON: (i32, i32, i32, i32) = (0, 0, 1920, 1080);
+    const POPUP: u32 = 0x8000_0000 | 0x1000_0000; // WS_POPUP | WS_VISIBLE
+    const OVERLAPPED: u32 = 0x00CF_0000 | 0x1000_0000; // WS_OVERLAPPEDWINDOW | WS_VISIBLE
+
+    #[test]
+    fn borderless_window_covering_monitor_is_fullscreen() {
+        assert!(is_fullscreen_geometry(MON, MON, POPUP));
+    }
+
+    #[test]
+    fn maximized_captioned_window_is_not_fullscreen() {
+        // Maximized windows overhang the monitor by the frame width.
+        assert!(!is_fullscreen_geometry((-8, -8, 1928, 1088), MON, OVERLAPPED | 0x0100_0000));
+    }
+
+    #[test]
+    fn maximized_borderless_window_is_not_fullscreen() {
+        // Custom-titlebar apps (Steam, Spotify) maximized over the reclaimed work area.
+        assert!(!is_fullscreen_geometry(MON, MON, POPUP | 0x0100_0000));
+    }
+
+    #[test]
+    fn window_smaller_than_monitor_is_not_fullscreen() {
+        assert!(!is_fullscreen_geometry((0, 0, 1920, 1040), MON, POPUP));
+    }
+
+    #[test]
+    fn fullscreen_on_secondary_monitor_uses_that_monitors_rect() {
+        let second = (1920, 0, 3840, 1080);
+        assert!(is_fullscreen_geometry(second, second, POPUP));
+        assert!(!is_fullscreen_geometry(second, MON, POPUP));
+    }
+}
+
 /// Extension that hides the console window of a spawned child process —
 /// `Command::new("powershell")` etc. flashes a black box on screen by
 /// default on Windows because the child inherits a fresh console. Setting

@@ -93,7 +93,15 @@ pub struct Settings {
     pub volume_percent: Option<u8>,
     #[serde(default)]
     pub theme: Theme,
+    /// Get out of the way of fullscreen apps: while an F11 browser, borderless
+    /// game or video player owns the foreground, the HUD is hidden and the
+    /// dock's bottom-edge hover trigger is disabled (a Win-key tap still
+    /// summons the dock). Set false to keep both pinned above everything.
+    #[serde(default = "default_true")]
+    pub hide_on_fullscreen: bool,
 }
+
+fn default_true() -> bool { true }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -105,6 +113,7 @@ impl Default for Settings {
             weather_lon: None,
             volume_percent: None,
             theme: Theme::default(),
+            hide_on_fullscreen: true,
         }
     }
 }

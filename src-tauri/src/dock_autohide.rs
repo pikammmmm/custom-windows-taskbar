@@ -4,7 +4,7 @@ use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
-use crate::{commands, dwm, keyhook, win32};
+use crate::{commands, config, dwm, keyhook, win32};
 
 /// Don't auto-dismiss the menu in the brief moment right after show — gives
 /// it time to take focus and avoids racing the very click that opened it.
@@ -60,6 +60,16 @@ fn run(app: AppHandle) {
     let mut last_menu_shown_seen: Option<Instant> = None;
     let mut topmost_tick = Instant::now();
 
+    // Fullscreen yield: while a fullscreen app owns the foreground on our
+    // monitor, the HUD is hidden and the dock's hover trigger is disabled, so
+    // glassbar never paints over a game / F11 browser / video.
+    let yield_to_fullscreen = config::load_settings()
+        .map(|s| s.hide_on_fullscreen)
+        .unwrap_or(true);
+    let dock_monitor = win32::monitor_at_point(dock_left + size.width as i32 / 2, shown_y);
+    let mut fullscreen_monitor: isize = 0; // 0 = no fullscreen app in front
+    let mut hud_hidden_for_fullscreen = false;
+
     let mut current_y = shown_y;
     let mut target_y = shown_y;
     let mut anim_from_y = shown_y;
@@ -72,7 +82,9 @@ fn run(app: AppHandle) {
             if GetCursorPos(&mut p).is_err() { continue; }
         }
 
-        let in_trigger = p.y >= screen_h - TRIGGER_PX
+        let dock_yielding = fullscreen_monitor != 0 && fullscreen_monitor == dock_monitor;
+        let in_trigger = !dock_yielding
+            && p.y >= screen_h - TRIGGER_PX
             && p.x >= dock_left
             && p.x <= dock_right;
         // While shown, keep the cursor "active" if it sits anywhere inside the
@@ -222,8 +234,40 @@ fn run(app: AppHandle) {
         // Re-assert topmost on a slower cadence — this one isn't a no-op so we
         // don't want it 60×/sec.
         if topmost_tick.elapsed().as_millis() >= TOPMOST_REASSERT_MS {
-            if dock_hwnd != 0 { dwm::assert_topmost(dock_hwnd); }
-            if hud_hwnd != 0 { dwm::assert_topmost(hud_hwnd); }
+            if yield_to_fullscreen {
+                // None = one of our own panels has focus; keep the last answer.
+                if let Some(mon) = win32::fullscreen_foreground_monitor() {
+                    if mon != fullscreen_monitor {
+                        fullscreen_monitor = mon;
+                        // A fullscreen app just took over our monitor — slide
+                        // the dock away now instead of waiting out the timer.
+                        if mon != 0 && mon == dock_monitor && visible {
+                            visible = false;
+                            start_anim(&mut target_y, &mut anim_from_y, &mut anim_start, current_y, hidden_y);
+                        }
+                    }
+                }
+                if hud_hwnd != 0 {
+                    let covered = fullscreen_monitor != 0
+                        && fullscreen_monitor == win32::monitor_of_hwnd(hud_hwnd);
+                    if covered && !hud_hidden_for_fullscreen && win32::is_visible(hud_hwnd) {
+                        win32::set_visible_noactivate(hud_hwnd, false);
+                        hud_hidden_for_fullscreen = true;
+                    } else if !covered && hud_hidden_for_fullscreen {
+                        // Only bring back a HUD that WE hid — one the user
+                        // toggled off stays off.
+                        win32::set_visible_noactivate(hud_hwnd, true);
+                        hud_hidden_for_fullscreen = false;
+                    }
+                }
+            }
+            // A dock parked off-screen under a fullscreen app has no business
+            // fighting it for z-order; one summoned with the Win key does.
+            let dock_parked = fullscreen_monitor != 0
+                && fullscreen_monitor == dock_monitor
+                && !visible;
+            if dock_hwnd != 0 && !dock_parked { dwm::assert_topmost(dock_hwnd); }
+            if hud_hwnd != 0 && !hud_hidden_for_fullscreen { dwm::assert_topmost(hud_hwnd); }
             topmost_tick = Instant::now();
         }
     }

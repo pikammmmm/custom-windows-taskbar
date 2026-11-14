@@ -111,6 +111,9 @@ Files live in `%APPDATA%\glassbar\glassbar\data\`:
 
 - `pinned.json` — array of `{ "path", "display_name", "icon_path"? }`. Hot-reloaded on save.
 - `settings.json` — `{ "hud_position": [x, y]?, "auto_start": bool }`.
+  - `"hide_on_fullscreen": bool` (default `true`): while a fullscreen app (F11 browser, borderless game, video) is in front, the HUD hides and the dock's bottom-edge hover trigger is off. A Win-key tap still summons the dock. Set `false` to keep both pinned above everything.
+
+While glassbar runs, the Windows taskbar is switched to auto-hide so maximized windows can use the whole screen. Your original setting is restored when glassbar exits or is uninstalled.
 
 A starter `pinned.example.json` ships in the repo.
 

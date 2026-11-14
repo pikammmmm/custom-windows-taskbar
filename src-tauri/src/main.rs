@@ -321,7 +321,7 @@ fn main() {
             // hidden). Runs continuously on its own Win32 message-loop thread.
             tray_host::spawn(app.handle().clone());
 
-            // Auto-hide dock + keep dock/HUD pinned above fullscreen apps.
+            // Auto-hide dock, keep dock/HUD topmost, and yield to fullscreen apps.
             dock_autohide::spawn(app.handle().clone());
 
             // Low-level keyboard hook so Win-key tap toggles the dock
