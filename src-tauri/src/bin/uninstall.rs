@@ -38,6 +38,7 @@ fn main() {
         .output();
 
     step("Restoring the Windows taskbar");
+    restore_taskbar_autohide();
     restore_taskbars();
 
     step("Removing autostart entry");
@@ -117,6 +118,37 @@ fn find_installed_msi_code() -> Option<String> {
         }
     }
     None
+}
+
+/// glassbar switches the taskbar to auto-hide so maximized windows can use the
+/// whole screen, and records the original state in a marker file. The app was
+/// just force-killed, so its own exit handler never ran — put the state back
+/// here, before the data directory (and the marker) is deleted.
+fn restore_taskbar_autohide() {
+    use windows::Win32::UI::Shell::{SHAppBarMessage, ABM_SETSTATE, APPBARDATA};
+    let Some(appdata) = std::env::var_os("APPDATA") else { return };
+    let marker = PathBuf::from(appdata)
+        .join("glassbar")
+        .join("glassbar")
+        .join("data")
+        .join("taskbar_autohide_restore");
+    let Ok(text) = std::fs::read_to_string(&marker) else { return };
+    let prev = text.trim().parse::<u32>().unwrap_or(0);
+    unsafe {
+        let class: Vec<u16> = "Shell_TrayWnd".encode_utf16().chain(std::iter::once(0)).collect();
+        let tray = FindWindowW(PCWSTR(class.as_ptr()), PCWSTR::null()).unwrap_or_default();
+        if tray.0 as isize == 0 {
+            return;
+        }
+        let mut abd = APPBARDATA {
+            cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+            hWnd: tray,
+            lParam: LPARAM(prev as isize),
+            ..Default::default()
+        };
+        SHAppBarMessage(ABM_SETSTATE, &mut abd);
+    }
+    let _ = std::fs::remove_file(&marker);
 }
 
 /// Re-show the primary taskbar plus every secondary-monitor taskbar.

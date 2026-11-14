@@ -305,6 +305,10 @@ fn main() {
             // multi-monitor changes) can re-show it. The re-assert loop skips
             // glassbar's own tray-host Shell_TrayWnd (see shell_taskbar) so it
             // keeps hiding EXPLORER's taskbar rather than fighting itself.
+            // Release the taskbar's reserved strip first, otherwise maximized
+            // windows stop short of the screen edge (must run before the tray
+            // host exists — see shell_taskbar::reclaim_work_area).
+            shell_taskbar::reclaim_work_area();
             let _ = shell_taskbar::hide_windows_taskbar();
             std::thread::spawn(|| loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
@@ -367,6 +371,7 @@ fn main() {
                 // then un-hide explorer's taskbar. shutdown() is idempotent, so
                 // firing on both ExitRequested and Exit is harmless.
                 tray_host::shutdown();
+                shell_taskbar::restore_work_area();
                 let _ = shell_taskbar::show_windows_taskbar();
             }
         });

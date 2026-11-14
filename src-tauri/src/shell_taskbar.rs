@@ -4,6 +4,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
     VK_LWIN, VK_M,
 };
+use windows::Win32::UI::Shell::{
+    SHAppBarMessage, ABM_GETSTATE, ABM_SETSTATE, ABS_AUTOHIDE, APPBARDATA,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetClassNameW, ShowWindow, SHOW_WINDOW_CMD, SW_HIDE, SW_SHOW,
 };
@@ -58,6 +61,87 @@ unsafe extern "system" fn apply_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         }
     }
     TRUE
+}
+
+/// HWND of EXPLORER's primary taskbar (0 if explorer isn't running). Skips
+/// glassbar's own tray-host window, which carries the same class name.
+pub fn explorer_tray_hwnd() -> isize {
+    struct Find {
+        host: isize,
+        found: isize,
+    }
+    unsafe extern "system" fn find_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let f = &mut *(lparam.0 as *mut Find);
+        let mut buf = [0u16; 64];
+        let len = GetClassNameW(hwnd, &mut buf);
+        if len > 0
+            && hwnd.0 as isize != f.host
+            && String::from_utf16_lossy(&buf[..len as usize]) == "Shell_TrayWnd"
+        {
+            f.found = hwnd.0 as isize;
+            return BOOL(0); // stop enumerating
+        }
+        TRUE
+    }
+    let mut f = Find { host: crate::tray_host::host_hwnd(), found: 0 };
+    unsafe {
+        let _ = EnumWindows(Some(find_proc), LPARAM(&mut f as *mut _ as isize));
+    }
+    f.found
+}
+
+fn appbar_message(msg: u32, tray: isize, lparam: isize) -> usize {
+    let mut abd = APPBARDATA {
+        cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+        hWnd: HWND(tray as *mut _),
+        lParam: LPARAM(lparam),
+        ..Default::default()
+    };
+    unsafe { SHAppBarMessage(msg, &mut abd) }
+}
+
+/// Give the taskbar's reserved screen strip back to applications.
+///
+/// `ShowWindow(SW_HIDE)` only makes Explorer's taskbar invisible — it stays a
+/// registered appbar, so the work area still stops short of the screen edge
+/// and maximized windows leave a dead band where the taskbar used to be.
+/// Switching the taskbar to auto-hide is the supported way to release that
+/// reservation. The previous state is written to a marker file so it survives
+/// a crash or a `taskkill` (updater / uninstaller) and can be put back later.
+///
+/// Call BEFORE the tray host starts and before hiding the taskbar.
+pub fn reclaim_work_area() {
+    let tray = explorer_tray_hwnd();
+    if tray == 0 {
+        return;
+    }
+    let prev = appbar_message(ABM_GETSTATE, tray, 0) as u32;
+    if prev & ABS_AUTOHIDE != 0 {
+        // Already auto-hidden — the user's own setting, or ours from a run
+        // that never exited cleanly (the marker, if any, still has the original).
+        return;
+    }
+    if let Ok(marker) = crate::config::taskbar_restore_path() {
+        if !marker.exists() {
+            let _ = std::fs::write(&marker, prev.to_string());
+        }
+    }
+    appbar_message(ABM_SETSTATE, tray, (prev | ABS_AUTOHIDE) as isize);
+    crate::glog!("[shell_taskbar] taskbar set to auto-hide to free the work area (was state {prev})");
+}
+
+/// Undo `reclaim_work_area` if (and only if) glassbar was the one that turned
+/// auto-hide on. Idempotent — the marker is removed after the first restore.
+pub fn restore_work_area() {
+    let Ok(marker) = crate::config::taskbar_restore_path() else { return };
+    let Ok(text) = std::fs::read_to_string(&marker) else { return };
+    let tray = explorer_tray_hwnd();
+    if tray == 0 {
+        return; // keep the marker; the next run / the uninstaller can restore
+    }
+    let prev = text.trim().parse::<u32>().unwrap_or(0);
+    appbar_message(ABM_SETSTATE, tray, prev as isize);
+    let _ = std::fs::remove_file(&marker);
 }
 
 /// Send a single tap of the Windows key — opens / toggles the Start menu.

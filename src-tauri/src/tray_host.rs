@@ -53,8 +53,9 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CopyIcon, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyWindow, DispatchMessageW,
     GetCursorPos, GetMessageW, PostMessageW, PostQuitMessage, RegisterClassW,
-    RegisterWindowMessageW, SendNotifyMessageW, SetWindowPos, TranslateMessage, UnregisterClassW,
-    HICON, HWND_BROADCAST, HWND_TOPMOST, MSG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+    RegisterWindowMessageW, SendMessageTimeoutW, SendNotifyMessageW, SetWindowPos,
+    TranslateMessage, UnregisterClassW, HICON, HWND_BROADCAST, HWND_TOPMOST, MSG,
+    SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
     SWP_NOSIZE, WM_APP, WM_COPYDATA, WM_DESTROY, WNDCLASSW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_POPUP,
 };
@@ -523,12 +524,16 @@ unsafe extern "system" fn wndproc(
             let cds = lparam.0 as *const COPYDATASTRUCT;
             if !cds.is_null() {
                 let cds = &*cds;
-                // dwData == 1 => Shell_NotifyIcon. dwData == 0 (APPBAR) and any
-                // other value are simply acknowledged (passed through).
-                if cds.dwData == 1
-                    && !cds.lpData.is_null()
-                    && cds.cbData as usize >= MIN_TRAY_BUF
-                {
+                // dwData == 1 => Shell_NotifyIcon, which we own. Everything
+                // else (dwData == 0 is SHAppBarMessage) belongs to the real
+                // taskbar: because we are the topmost Shell_TrayWnd, every
+                // app's appbar query lands here, and answering a blind TRUE
+                // breaks work-area / auto-hide / fullscreen negotiation for
+                // them. Relay those to explorer and return its answer.
+                if cds.dwData != 1 {
+                    return forward_to_explorer(wparam, lparam);
+                }
+                if !cds.lpData.is_null() && cds.cbData as usize >= MIN_TRAY_BUF {
                     let len = cds.cbData as usize;
                     // Copy out so we never hold a pointer into the sender's
                     // memory beyond this call.
@@ -548,6 +553,30 @@ unsafe extern "system" fn wndproc(
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
+}
+
+/// Relay a WM_COPYDATA we don't own to explorer's real `Shell_TrayWnd` and
+/// return its result. The payload (APPBARMSGDATA etc.) carries the original
+/// caller's process id + shared-memory handle, so it is valid verbatim.
+unsafe fn forward_to_explorer(wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    let real = crate::shell_taskbar::explorer_tray_hwnd();
+    if real == 0 {
+        return LRESULT(1); // no explorer to ask — acknowledge, as before
+    }
+    let mut result: usize = 0;
+    let sent = SendMessageTimeoutW(
+        HWND(real as *mut c_void),
+        WM_COPYDATA,
+        wparam,
+        lparam,
+        SMTO_ABORTIFHUNG,
+        2000,
+        Some(&mut result),
+    );
+    if sent.0 == 0 {
+        return LRESULT(0);
+    }
+    LRESULT(result as isize)
 }
 
 fn broadcast_taskbar_created() {

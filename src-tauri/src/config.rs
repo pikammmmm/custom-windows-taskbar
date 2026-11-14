@@ -21,6 +21,13 @@ pub fn icon_cache_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Present only while glassbar has switched Explorer's taskbar to auto-hide.
+/// Holds the appbar state to put back on exit / uninstall — see
+/// `shell_taskbar::reclaim_work_area`.
+pub fn taskbar_restore_path() -> Result<PathBuf> {
+    Ok(data_dir()?.join("taskbar_autohide_restore"))
+}
+
 pub fn settings_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("settings.json"))
 }
